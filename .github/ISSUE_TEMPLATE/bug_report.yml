@@ -1,0 +1,134 @@
+name: Bug Report
+description: Report a bug or issue with Steam Audio Isolator
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! Please fill out the information below to help us diagnose the issue.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the bug
+      description: A clear description of what the bug is
+      placeholder: Tell us what happened
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: How can we reproduce this issue?
+      placeholder: |
+        1. Launch the application
+        2. Click on '...'
+        3. Select game '...'
+        4. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen?
+      placeholder: I expected the game audio to be routed to Steam recording
+    validations:
+      required: true
+
+  - type: dropdown
+    id: installation
+    attributes:
+      label: Installation method
+      description: How did you install Steam Audio Isolator?
+      options:
+        - Standalone binary (from Releases)
+        - Run from source (git clone)
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: What version are you using? (Check About tab or release tag)
+      placeholder: "v0.1.0"
+    validations:
+      required: true
+
+  - type: input
+    id: distro
+    attributes:
+      label: Linux Distribution
+      description: What Linux distro are you using?
+      placeholder: "Ubuntu 24.04, Arch Linux, Fedora 40, etc."
+    validations:
+      required: true
+
+  - type: textarea
+    id: pipewire-version
+    attributes:
+      label: PipeWire Information
+      description: |
+        Run these commands and paste the output:
+        ```bash
+        pw-cli --version
+        systemctl --user status wireplumber
+        ```
+      placeholder: Paste command output here
+      render: shell
+    validations:
+      required: true
+
+  - type: input
+    id: steam-version
+    attributes:
+      label: Steam Version
+      description: What version of Steam are you using? (Help → About Steam)
+      placeholder: "Steam Client Build: Dec 10 2025"
+
+  - type: textarea
+    id: game
+    attributes:
+      label: Game Information
+      description: Which game(s) are you having issues with?
+      placeholder: |
+        Game name: Duckov
+        Running through: Proton 9.0
+        Steam Game Recording: Enabled
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Application Logs
+      description: |
+        Check the log file: `~/.cache/steam-audio-isolator.log`
+        Paste relevant error messages or the last 50 lines
+      placeholder: Paste log contents here
+      render: text
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Add any other context, screenshots, or information about the problem
+      placeholder: Screenshots, error messages, or other relevant details
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-flight checklist
+      description: Please confirm you've checked these before submitting
+      options:
+        - label: I verified PipeWire is running (not PulseAudio)
+          required: true
+        - label: I verified Steam Game Recording is enabled for my game
+          required: true
+        - label: I checked the log file for errors
+          required: true
+        - label: I searched existing issues for duplicates
+          required: true

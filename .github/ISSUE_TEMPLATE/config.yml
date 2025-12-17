@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Technical Documentation
+    url: https://github.com/crashman79/steam-audio-isolator/blob/main/TECHNICAL_DETAILS.md
+    about: Learn how Steam Audio Isolator works with PipeWire
+  - name: PipeWire Documentation
+    url: https://docs.pipewire.org/
+    about: Official PipeWire documentation for troubleshooting audio issues

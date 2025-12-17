@@ -1,0 +1,55 @@
+name: Help / Question
+description: Ask a question or get help using Steam Audio Isolator
+title: "[Help]: "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Need help? We're here to assist! Before submitting:
+        - Check the [README](https://github.com/crashman79/steam-audio-isolator/blob/main/README.md)
+        - Check the [Technical Details](https://github.com/crashman79/steam-audio-isolator/blob/main/TECHNICAL_DETAILS.md)
+        - Check the About tab in the application
+        - Search existing issues
+
+  - type: textarea
+    id: question
+    attributes:
+      label: What do you need help with?
+      description: Describe your question or what you're trying to accomplish
+      placeholder: "I'm trying to..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: tried
+    attributes:
+      label: What have you tried?
+      description: What steps have you already taken to solve this?
+      placeholder: |
+        1. I tried...
+        2. I checked...
+        3. I looked at...
+
+  - type: input
+    id: distro
+    attributes:
+      label: Linux Distribution
+      placeholder: "Ubuntu 24.04, Arch Linux, etc."
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Any other information that might be helpful
+      placeholder: Error messages, screenshots, configuration details, etc.
+
+  - type: checkboxes
+    id: docs
+    attributes:
+      label: Documentation check
+      options:
+        - label: I checked the README and didn't find an answer
+          required: true
+        - label: I searched existing issues
+          required: true
