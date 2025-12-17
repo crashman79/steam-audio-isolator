@@ -206,13 +206,30 @@ class SourceDetector:
         if media_role in ['game', 'production']:
             return 'Game'
         
-        # Check for browser
-        if any(x in app_name for x in ['firefox', 'chromium', 'chrome', 'opera', 'brave', 'edge']):
+        # Check for communication tools FIRST (before browsers)
+        # Many use Electron/Chromium but binary name reveals true identity
+        if any(x in app_binary for x in 
+               ['discord', 'slack', 'zoom', 'telegram', 'teams', 'skype', 
+                'mumble', 'teamspeak', 'element', 'signal', 'whatsapp']):
+            return 'Communication'
+        
+        # Check app name for communication (fallback)
+        if any(x in app_name for x in 
+               ['discord', 'slack', 'zoom', 'telegram', 'teams', 'skype', 
+                'mumble', 'teamspeak', 'webrtc', 'element', 'signal']):
+            return 'Communication'
+        
+        # Check for browser (after communication to avoid Electron false positives)
+        if any(x in app_binary for x in 
+               ['firefox', 'chrome', 'chromium', 'opera', 'brave', 'edge', 
+                'vivaldi', 'safari', 'epiphany', 'falkon', 'midori', 'qutebrowser']):
             return 'Browser'
         
-        # Check for communication tools
-        if any(x in app_name for x in ['discord', 'slack', 'zoom', 'telegram', 'teams', 'skype', 'mumble', 'teamspeak']):
-            return 'Communication'
+        # Check app name for browser (fallback)
+        if any(x in app_name for x in 
+               ['firefox', 'chrome', 'chromium', 'opera', 'brave', 'edge', 
+                'vivaldi', 'safari', 'epiphany']):
+            return 'Browser'
         
         # ALSA/system audio devices
         if any(x in node_name for x in ['alsa', 'jack', 'pulse']):
