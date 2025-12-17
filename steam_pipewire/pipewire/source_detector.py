@@ -163,18 +163,55 @@ class SourceDetector:
         app_name = props.get('application.name', '').lower()
         app_binary = props.get('application.process.binary', '').lower()
         node_name = props.get('node.name', '').lower()
-
-        # Check for specific game indicators
-        if any(x in app_name or x in app_binary for x in 
-               ['wine', 'proton', 'steam', 'game', '.exe', 'game.so']):
+        app_id = props.get('application.process.id', '')
+        
+        # Check for Steam game indicators (expanded detection)
+        # 1. Wine/Proton executables
+        if any(x in app_binary for x in ['wine', 'proton', '.exe']):
+            return 'Game'
+        
+        # 2. Steam runtime containers and launchers
+        if any(x in app_binary for x in 
+               ['pressure-vessel', 'steam-runtime', 'steamwebhelper', 
+                'gameoverlayui', 'reaper', 'fossilize']):
+            # Skip Steam's own processes (web helper, overlay)
+            if 'steamwebhelper' in app_binary or 'gameoverlayui' in app_binary:
+                return 'System'
+            return 'Game'
+        
+        # 3. Games running under Steam runtime (check parent process)
+        if 'steam' in app_binary.lower() and 'game' not in app_binary.lower():
+            # This is likely Steam itself, not a game
+            pass
+        
+        # 4. Application name hints
+        if any(x in app_name for x in ['game', 'proton', 'wine']):
+            return 'Game'
+        
+        # 5. Check for common Linux game binaries
+        if app_binary.endswith(('.x86_64', '.x86', '.bin', '.sh')) and app_binary:
+            # Many native Linux games end with these
+            # But exclude known applications
+            if not any(x in app_name for x in 
+                      ['firefox', 'chrome', 'code', 'electron', 'discord', 
+                       'slack', 'spotify', 'vlc', 'mpv']):
+                # Could be a game, check if it's from a game-like path
+                if any(x in app_binary for x in 
+                      ['/steam/', '/steamapps/', '/games/', '/.steam/', 
+                       '/compatdata/', '/shadercache/']):
+                    return 'Game'
+        
+        # 6. Check media.role property (some games set this)
+        media_role = props.get('media.role', '').lower()
+        if media_role in ['game', 'production']:
             return 'Game'
         
         # Check for browser
-        if any(x in app_name for x in ['firefox', 'chromium', 'chrome', 'opera', 'brave']):
+        if any(x in app_name for x in ['firefox', 'chromium', 'chrome', 'opera', 'brave', 'edge']):
             return 'Browser'
         
         # Check for communication tools
-        if any(x in app_name for x in ['discord', 'slack', 'zoom', 'telegram', 'teams']):
+        if any(x in app_name for x in ['discord', 'slack', 'zoom', 'telegram', 'teams', 'skype', 'mumble', 'teamspeak']):
             return 'Communication'
         
         # ALSA/system audio devices
