@@ -1,6 +1,46 @@
 # Steam Audio Isolator
 
-A PyQt5-based GUI application that isolates game audio for clean Steam game recording on Linux.
+<p align="center">
+  <img src="steam-audio-isolator-256.png" alt="Steam Audio Isolator" width="128">
+</p>
+
+<p align="center">
+  <strong>Isolate game audio for clean Steam game recording on Linux</strong>
+</p>
+
+<p align="center">
+  <a href="#features">Features</a> •
+  <a href="#the-problem">The Problem</a> •
+  <a href="#installation">Installation</a> •
+  <a href="#usage">Usage</a> •
+  <a href="#contributing">Contributing</a>
+</p>
+
+---
+
+## The Problem
+
+Steam's game recording feature on Linux captures **all system audio** by default:
+- ❌ System notifications
+- ❌ Browser audio (YouTube, Spotify, etc.)
+- ❌ Discord/chat applications
+- ❌ Background applications
+
+This results in cluttered recordings with unwanted sounds mixing into your gameplay footage.
+
+## The Solution
+
+Steam Audio Isolator creates **direct audio connections** from your game to Steam's recording input, bypassing the system audio mixer entirely:
+
+```
+Without Steam Audio Isolator:
+Game → Audio Sink (speakers) → Steam Recording
+     ↳ Browser, Discord, notifications also recorded 😞
+
+With Steam Audio Isolator:
+Game → Direct Connection → Steam Recording ✓
+Other Audio → Audio Sink → Speakers (not recorded) ✓
+```
 
 ## Overview
 
@@ -12,18 +52,25 @@ Steam's game recording feature on Linux captures all audio sources by default. T
 
 ## How It Works
 
-The application analyzes your PipeWire audio configuration to:
+## Features
 
-1. **Detect Audio Sources**: Identifies all active audio producers (games, browsers, applications)
-2. **Filter Sources**: Automatically categorizes sources as:
-   - **Game**: Wine/Proton games, detected by `.exe` binary or wine process name
-   - **Browser**: Firefox, Chromium, Chrome, Opera, Brave
-   - **Communication**: Discord, Slack, Zoom, Telegram, Teams
-   - **System**: ALSA hardware devices and system audio
-   - **Application**: Other audio-producing applications
+### Core Functionality
+- 🎮 **Automatic Game Detection** - Detects Wine/Proton games automatically
+- 🎯 **Smart Categorization** - Groups audio sources by type (Game, Browser, System, Communication)
+- 🔗 **Direct Audio Routing** - Creates point-to-point PipeWire connections
+- 💾 **Profile Management** - Save and load routing configurations
+- 🎵 **Multi-Stream Support** - Handles games with multiple audio streams (main, UI, voice/chat)
 
-3. **Create Routes**: Connects selected sources directly to Steam's recording input node
-4. **Manage Routes**: View active connections and disconnect as needed
+### UI & UX
+- 🪟 **System Tray Integration** - Minimize to tray with custom cyan icon
+- ⌨️ **Keyboard Shortcuts** - Quick access (Ctrl+Shift+A/C, F5, Ctrl+Shift+H)
+- 🔄 **Real-Time Updates** - Auto-detect new audio sources
+- ℹ️ **Built-in Help** - Comprehensive About tab with usage guide
+
+### Configuration
+- ⚙️ **Flexible Settings** - Configure auto-detect interval, tray behavior, routing restoration
+- 🎨 **Stream Purpose Hints** - Identifies main audio, UI sounds, and voice chat streams
+- 🚀 **Auto-Apply** - Automatically route newly detected games
 
 ## Example Configuration (with Duckov Game)
 
@@ -45,24 +92,52 @@ The key distinction: instead of routing all audio through the audio sink (speake
 
 ## Requirements
 
-- Linux with PipeWire audio system
-- Python 3.8+
-- PyQt5 (>=5.15.0)
-- PipeWire tools: `pw-cli`, `pw-dump`
-- Steam with game recording enabled
+### System Requirements
+- **Linux** with PipeWire audio system (not PulseAudio)
+- **Python 3.8+**
+- **Steam** with game recording enabled
+- PipeWire tools: `pw-cli`, `pw-dump` (usually pre-installed)
+
+### Verify PipeWire
+```bash
+# Check if PipeWire is running
+systemctl --user status wireplumber
+
+# Check available tools
+which pw-dump pw-cli
+```
 
 ## Installation
 
+### Quick Start
+
 ```bash
+# Clone the repository
+git clone https://github.com/YOUR_USERNAME/steam-audio-isolator.git
+cd steam-audio-isolator
+
+# Install dependencies
 pip install -r requirements.txt
+
+# Run the application
 python -m steam_pipewire.main
 ```
 
-Or install the package:
+### Desktop Integration (Optional)
 
 ```bash
-pip install -e .
-steam-pipewire-helper
+# Generate icons
+python generate_icon.py
+
+# Install icons
+mkdir -p ~/.local/share/icons/hicolor/{16x16,24x24,32x32,48x48,64x64,128x128,256x256}/apps
+for size in 16 24 32 48 64 128 256; do
+  cp steam-audio-isolator-${size}.png ~/.local/share/icons/hicolor/${size}x${size}/apps/steam-audio-isolator.png
+done
+
+# Install .desktop file
+cp steam-audio-isolator.desktop ~/.local/share/applications/
+update-desktop-database ~/.local/share/applications/
 ```
 
 ## Project Structure
@@ -84,61 +159,178 @@ steam_pipewire/
 
 ## Usage
 
-1. **Launch the application**
-   ```bash
-   python -m steam_pipewire.main
-   ```
+### Basic Workflow
 
-2. **Audio Routing Tab**:
-   - Sources are automatically detected and grouped by type
-   - Check sources you want to include in Steam recording
-   - Click "Apply Routing" to connect them to Steam
+1. **Start the application** (from terminal or desktop menu)
+2. **Audio Routing Tab**: Select games you want to record
+   - Game sources are auto-detected and auto-selected
+   - Uncheck browser/system audio to exclude them
+3. **Click "Apply Routing"** to create direct connections
+4. **Start recording in Steam** - Only selected audio is captured!
 
-3. **Current Routes Tab**:
-   - View all active audio connections to Steam
-   - Monitor what's currently being recorded
+### Keyboard Shortcuts
 
-4. **System Info Tab**:
-   - Debug information showing node IDs and properties
-   - Useful for troubleshooting PipeWire configuration
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+Shift+A` | Apply routing |
+| `Ctrl+Shift+C` | Clear all routes |
+| `F5` | Refresh audio sources |
+| `Ctrl+Shift+H` | Hide/Show window |
+
+### Profiles
+
+Save your routing configurations for quick switching:
+
+1. Select desired audio sources
+2. Go to **Profiles** tab
+3. Enter a name (e.g., "Game Only", "Game + Discord")
+4. Click **Save Profile**
+
+### Settings
+
+- **Restore default on close**: Reconnect system audio when quitting
+- **Auto-detect interval**: How often to check for new audio sources
+- **Minimize to tray**: Hide to system tray instead of closing
+
+### Tips
+
+- **Multiple streams from one game?** The app can identify main audio, UI sounds, and voice chat
+- **Don't want a game auto-selected?** Right-click the checkbox to exclude it
+- **System tray**: Left-click to show/hide, right-click for menu
 
 ## Technical Details
 
-### PipeWire Node Types
-- **Stream/Output/Audio**: Audio producers (games, apps)
-- **Stream/Input/Audio**: Audio consumers (Steam recording, applications)
-- **Audio/Source**: Hardware input devices
-- **Audio/Sink**: Hardware output devices (speakers)
+### How It Works
 
-### Audio Flow in Steam Recording
+The application uses PipeWire's graph API to:
 
-**Without Filter** (Current Steam behavior):
+1. **Enumerate nodes** with `pw-dump` (JSON query)
+2. **Identify game audio** by checking process binaries (wine, proton, .exe)
+3. **Find Steam's recording node** (auto-discovered each session)
+4. **Create direct links** using `pw-cli connect <source> <steam>`
+5. **Bypass the audio sink** so system audio isn't captured
+
+### PipeWire Commands
+
+The app uses these commands internally:
+
+```bash
+# List all nodes
+pw-dump | jq '.[] | select(.type == "PipeWire:Interface:Node")'
+
+# Find Steam node
+pw-dump | jq '.[] | select(.info.props."application.name" == "Steam")'
+
+# Create route
+pw-cli connect <source_node_id> <steam_node_id>
+
+# List active routes
+pw-cli list-objects Link
+
+# Remove route
+pw-cli destroy <link_id>
 ```
-Game Audio → Audio Sink → Hardware → Steam Recording Input
+
+### Configuration Files
+
 ```
-This captures everything connected to the audio sink.
+~/.config/steam-audio-isolator/
+├── settings.json           # Application settings
+└── profiles/
+    ├── game-only.pwp      # Saved routing profiles
+    ├── game-discord.pwp
+    └── ...
 
-**With Filter** (This app):
+~/.cache/steam-audio-isolator.log  # Application logs
 ```
-Game Audio (Node 137) → Direct Link → Steam Recording Input (Node 154)
+
+## Troubleshooting
+
+### "Steam node not found"
+
+**Cause**: Steam's recording input isn't detected
+
+**Solutions**:
+- Ensure Steam is running
+- Enable **Game Recording** for your game in Steam settings
+- Verify PipeWire is running: `systemctl --user status wireplumber`
+- Check Steam node exists: `pw-dump | grep -i steam`
+
+### "No audio sources detected"
+
+**Cause**: PipeWire query issues
+
+**Solutions**:
+- Start your game **before** launching the app
+- Click **Refresh Sources** (F5)
+- Verify PipeWire tools: `which pw-dump pw-cli`
+- Check logs: `~/.cache/steam-audio-isolator.log`
+
+### Routes not working
+
+**Cause**: Connection issues
+
+**Solutions**:
+- Check **Current Routes** tab - are routes listed?
+- Verify with: `pw-cli list-objects Link | grep Steam`
+- Try **Clear All Routes** then reapply
+- Check **System Info** tab for node IDs
+
+### Game audio plays but doesn't record
+
+**Cause**: Steam recording not active
+
+**Solutions**:
+- Press Steam's recording hotkey (default: Ctrl+F11)
+- Check Steam recording is enabled in settings
+- Ensure Steam Game Recording is enabled **per-game**
+
+## Contributing
+
+Contributions are welcome! This project benefits from:
+
+- 🐛 Bug reports and feature requests (open an issue)
+- 📝 Documentation improvements
+- 🎨 UI/UX enhancements
+- 🔧 Code optimization and refactoring
+- 🌍 Testing on different Linux distributions
+
+### Development Setup
+
+```bash
+git clone https://github.com/YOUR_USERNAME/steam-audio-isolator.git
+cd steam-audio-isolator
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python -m steam_pipewire.main
 ```
-Only selected sources connect directly to Steam, system audio flows normally to speakers.
 
-### Example Node IDs (from Duckov game session)
-- Node 66: Audio Sink (speakers)
-- Node 137: Duckov.exe (Stream/Output/Audio) - Game audio
-- Node 154: Steam (Stream/Input/Audio) - Recording input
-- Active links: 137 → 66 (for playback), 66 → 154 (everything to Steam)
+## Credits
 
-## Configuration
+Developed with AI pair programming assistance (Claude/Copilot), combining human expertise in Linux audio systems and AI-assisted rapid prototyping.
 
-Profiles are saved in `~/.config/steam-pipewire-helper/profiles/`
+### Technologies
+
+- **PyQt5** - GUI framework
+- **PipeWire** - Modern Linux audio system
+- **Python 3.8+** - Application runtime
 
 ## License
 
-MIT
+MIT License - see LICENSE file for details
 
-## Troubleshooting
+## Support
+
+If you find this tool useful, consider:
+- ⭐ Starring the repository
+- 🐛 Reporting bugs
+- 💡 Suggesting features
+- 📢 Sharing with other Linux gamers
+
+---
+
+**Note**: This tool is specifically for Linux systems using PipeWire. It will not work with PulseAudio.
 
 ### "Steam node not found"
 - Ensure Steam is running
