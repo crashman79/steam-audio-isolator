@@ -1,0 +1,56 @@
+# Changelog
+
+All notable changes to Steam Audio Isolator will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+### Fixed
+- Removed accidental text paste on line 94 in main_window.py
+
+## [0.1.1] - 2024-12-17
+
+### Fixed
+- **Discord detection**: Discord now correctly categorized as "Communication" instead of "Browser"
+  - Discord appears as "Chromium" in app name but binary is "Discord"
+  - WEBRTC VoiceEngine streams now also detected as Discord
+- **Vivaldi detection**: Vivaldi browser now properly detected
+  - Binary is "vivaldi-bin" which is now in detection list
+- **Detection priority**: Communication apps (Discord, Slack) checked before browsers to prevent Electron app misidentification
+
+### Added
+- Expanded browser detection: vivaldi, safari, epiphany, falkon, midori, qutebrowser
+- Expanded communication apps: element, signal, whatsapp, skype, mumble, teamspeak
+- Binary name checking for more reliable app categorization
+
+## [0.1.0] - 2024-12-16
+
+### Added
+- Initial public release
+- Real-time PipeWire audio source detection
+- Intelligent source categorization (Game, Browser, System, Communication, Application)
+- Direct node-to-node audio routing via pw-cli
+- Route management (view, apply, disconnect)
+- System information and debugging view
+- Standalone binary with desktop integration
+- Automated GitHub Actions build and release
+- Issue templates for bug reports, feature requests, and help
+
+### Game Detection Features
+- Wine/Proton game detection (.exe, wine64-preloader)
+- Steam runtime container detection (pressure-vessel, steam-runtime, reaper)
+- Native Linux game detection (.x86_64, .x86, .bin, .sh with Steam path checking)
+- Media role hints (media.role=game or production)
+- Smart filtering of Steam's own processes (steamwebhelper, gameoverlayui)
+
+### Browser Detection
+- Firefox, Chromium, Chrome, Opera, Brave, Edge support
+
+### Communication Apps
+- Discord, Slack, Zoom, Telegram, Teams detection
+
+[Unreleased]: https://github.com/crashman79/steam-audio-isolator/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/crashman79/steam-audio-isolator/compare/v0.1.0...v0.1.1
+[0.1.0]: https://github.com/crashman79/steam-audio-isolator/releases/tag/v0.1.0
