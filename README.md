@@ -109,7 +109,21 @@ which pw-dump pw-cli
 
 ## Installation
 
-### Quick Start
+### Option 1: Download Standalone Binary (Recommended)
+
+**No Python installation required!** Just download and run.
+
+1. Go to [Releases](https://github.com/YOUR_USERNAME/steam-audio-isolator/releases)
+2. Download `steam-audio-isolator-linux-x86_64.tar.gz`
+3. Extract and install:
+   ```bash
+   tar -xzf steam-audio-isolator-linux-x86_64.tar.gz
+   cd steam-audio-isolator-linux-x86_64
+   ./install.sh
+   ```
+4. Launch from application menu or run: `steam-audio-isolator`
+
+### Option 2: Run from Source
 
 ```bash
 # Clone the repository
@@ -123,22 +137,24 @@ pip install -r requirements.txt
 python -m steam_pipewire.main
 ```
 
-### Desktop Integration (Optional)
+### Option 3: Build Standalone Binary (For Developers)
 
 ```bash
-# Generate icons
-python generate_icon.py
+# Clone and build
+git clone https://github.com/YOUR_USERNAME/steam-audio-isolator.git
+cd steam-audio-isolator
 
-# Install icons
-mkdir -p ~/.local/share/icons/hicolor/{16x16,24x24,32x32,48x48,64x64,128x128,256x256}/apps
-for size in 16 24 32 48 64 128 256; do
-  cp steam-audio-isolator-${size}.png ~/.local/share/icons/hicolor/${size}x${size}/apps/steam-audio-isolator.png
-done
+# Install build dependencies
+pip install -r requirements.txt pyinstaller
 
-# Install .desktop file
-cp steam-audio-isolator.desktop ~/.local/share/applications/
-update-desktop-database ~/.local/share/applications/
+# Build release package
+chmod +x build_release.sh
+./build_release.sh
+
+# Release tarball will be in dist/
 ```
+
+**Note**: Desktop integration (application menu, icon, .desktop file) is automatically handled by `install.sh` in the binary release.
 
 ## Project Structure
 
@@ -304,6 +320,23 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 python -m steam_pipewire.main
+```
+
+### Building Releases
+
+To build a standalone release package:
+
+```bash
+./build_release.sh
+```
+
+This creates `dist/steam-audio-isolator-linux-x86_64.tar.gz` ready for GitHub Releases.
+
+**Automated Builds**: The project uses GitHub Actions to automatically build releases when you push a version tag:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
 ```
 
 ## Credits

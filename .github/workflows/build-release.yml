@@ -1,0 +1,79 @@
+name: Build Release
+
+on:
+  push:
+    tags:
+      - 'v*'  # Trigger on version tags like v1.0.0
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m venv .venv
+        source .venv/bin/activate
+        pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pyinstaller
+    
+    - name: Build release
+      run: |
+        chmod +x build_release.sh
+        ./build_release.sh
+    
+    - name: Get version
+      id: get_version
+      run: |
+        if [[ $GITHUB_REF == refs/tags/* ]]; then
+          echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        else
+          echo "version=dev-$(date +%Y%m%d-%H%M%S)" >> $GITHUB_OUTPUT
+        fi
+    
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      if: startsWith(github.ref, 'refs/tags/')
+      with:
+        files: dist/steam-audio-isolator-linux-x86_64.tar.gz
+        body: |
+          ## Steam Audio Isolator ${{ steps.get_version.outputs.version }}
+          
+          ### Installation
+          
+          1. Download `steam-audio-isolator-linux-x86_64.tar.gz`
+          2. Extract: `tar -xzf steam-audio-isolator-linux-x86_64.tar.gz`
+          3. Run installer: `./install.sh`
+          4. Launch from application menu or run: `steam-audio-isolator`
+          
+          ### Requirements
+          
+          - Linux with PipeWire audio system
+          - Steam with game recording enabled
+          - PipeWire tools (pw-cli, pw-dump)
+          
+          ### What's Included
+          
+          - Standalone executable (no Python installation required)
+          - Automatic installer script
+          - Desktop integration files
+          
+          For more details, see the [README](https://github.com/${{ github.repository }}/blob/main/README.md)
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Upload artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: steam-audio-isolator-linux-x86_64
+        path: dist/steam-audio-isolator-linux-x86_64.tar.gz
