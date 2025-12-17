@@ -1,8 +1,11 @@
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
+
+# Build and distribution
 build/
 develop-eggs/
 dist/
@@ -15,14 +18,65 @@ parts/
 sdist/
 var/
 wheels/
+pip-wheel-metadata/
+share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+MANIFEST
+
+# Virtual environments
 .venv/
 venv/
 ENV/
+env/
+env.bak/
+venv.bak/
+
+# IDEs
 .vscode/
+.idea/
 *.swp
 *.swo
 *~
+.project
+.pydevproject
+.settings/
+
+# OS specific
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs and databases
+*.log
+*.sqlite
+*.db
+
+# Application specific
+.cache/
+*.pyc
+
+# Configuration (contains user-specific paths)
+# Keep example configs but ignore user configs
+.config/
+
+# Testing
+.pytest_cache/
+.coverage
+.tox/
+.nox/
+htmlcov/
+
+# Documentation builds
+docs/_build/
+
+# Temporary files
+*.tmp
+*.bak
+*.orig
+.*.swp
