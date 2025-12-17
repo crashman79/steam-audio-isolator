@@ -113,7 +113,7 @@ which pw-dump pw-cli
 
 **No Python installation required!** Just download and run.
 
-1. Go to [Releases](https://github.com/YOUR_USERNAME/steam-audio-isolator/releases)
+1. Go to [Releases](https://github.com/crashman79/steam-audio-isolator/releases)
 2. Download `steam-audio-isolator-linux-x86_64.tar.gz`
 3. Extract and install:
    ```bash
@@ -127,7 +127,7 @@ which pw-dump pw-cli
 
 ```bash
 # Clone the repository
-git clone https://github.com/YOUR_USERNAME/steam-audio-isolator.git
+git clone https://github.com/crashman79/steam-audio-isolator.git
 cd steam-audio-isolator
 
 # Install dependencies
@@ -141,7 +141,7 @@ python -m steam_pipewire.main
 
 ```bash
 # Clone and build
-git clone https://github.com/YOUR_USERNAME/steam-audio-isolator.git
+git clone https://github.com/crashman79/steam-audio-isolator.git
 cd steam-audio-isolator
 
 # Install build dependencies
@@ -314,7 +314,7 @@ Contributions are welcome! This project benefits from:
 ### Development Setup
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/steam-audio-isolator.git
+git clone https://github.com/crashman79/steam-audio-isolator.git
 cd steam-audio-isolator
 python -m venv .venv
 source .venv/bin/activate
