@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Steam Audio Isolator
+Comment=Isolate game audio for clean Steam game recording
+Exec="/home/crashman79/development/steam pipewire helper/run.sh"
+Icon=steam-audio-isolator
+Terminal=false
+Categories=Audio;Utility;
+StartupNotify=true
