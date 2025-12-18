@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>Isolate game audio for clean Steam game recording on Linux</strong><br>
-  <em>v0.1.3 - Routes visualization, intelligent source categorization, real-time PipeWire routing</em>
+  <em>v0.1.5 - Release automation, changelog inclusion, GitHub Actions integration</em>
 </p>
 
 <p align="center">
