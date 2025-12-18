@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.5] - 2025-12-18
 
+### Added
+- **Release automation**: New `release.sh` script for automated version bumping across all files
+  - Automatically updates version in `setup.py`, `steam_pipewire/__init__.py`, and CHANGELOG.md
+  - Creates git commit and annotated tag with proper formatting
+  - Validates version format (X.Y.Z) before proceeding
+- **Changelog in releases**: Build process now includes version-specific CHANGELOG.md in release tarball
+- **Enhanced GitHub Actions**: Workflow automatically extracts changelog section for GitHub release notes
+
+### Changed
+- `build_release.sh` now extracts and includes the appropriate changelog version in the release
+- GitHub Actions workflow improved to parse and display changelog in release notes
+
 ## [0.1.4] - 2025-12-18
 
 ### Fixed
