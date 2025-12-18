@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4] - 2025-12-18
+
+### Fixed
+- Fixed release installer script not being executable when extracted from tarball
+- Fixed stray chmod command appearing in generated install.sh during build
+
 ## [0.1.3] - 2025-12-18
 
 ### Added
