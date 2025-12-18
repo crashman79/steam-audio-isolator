@@ -58,7 +58,11 @@ jobs:
       if: startsWith(github.ref, 'refs/tags/')
       run: |
         if [ -f release_changelog.txt ]; then
-          echo "content=$(cat release_changelog.txt)" >> $GITHUB_OUTPUT
+          {
+            echo 'content<<EOF'
+            cat release_changelog.txt
+            echo 'EOF'
+          } >> $GITHUB_OUTPUT
         fi
     
     - name: Create Release
