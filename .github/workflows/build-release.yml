@@ -59,21 +59,6 @@ jobs:
       with:
         files: dist/steam-audio-isolator-linux-x86_64.tar.gz
         body_path: release_changelog.txt
-          
-          ## Requirements
-          
-          - Linux with PipeWire audio system
-          - Steam with game recording enabled
-          - PipeWire tools (pw-cli, pw-dump)
-          
-          ## What's Included
-          
-          - Standalone executable (no Python installation required)
-          - Automatic installer script (`install.sh`)
-          - Desktop integration files
-          - Version-specific changelog
-          
-          For more details, see the [README](https://github.com/${{ github.repository }}/blob/main/README.md) and [Documentation](https://github.com/${{ github.repository }}/blob/main/TECHNICAL_DETAILS.md)
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     
