@@ -53,34 +53,12 @@ jobs:
         VERSION: ${{ env.VERSION }}
         GITHUB_REPOSITORY: ${{ github.repository }}
     
-    - name: Read changelog for release
-      id: changelog
-      if: startsWith(github.ref, 'refs/tags/')
-      run: |
-        if [ -f release_changelog.txt ]; then
-          {
-            echo 'content<<EOF'
-            cat release_changelog.txt
-            echo 'EOF'
-          } >> $GITHUB_OUTPUT
-        fi
-    
     - name: Create Release
       uses: softprops/action-gh-release@v1
       if: startsWith(github.ref, 'refs/tags/')
       with:
         files: dist/steam-audio-isolator-linux-x86_64.tar.gz
-        body: |
-          ## Installation
-          
-          1. Download `steam-audio-isolator-linux-x86_64.tar.gz`
-          2. Extract: `tar -xzf steam-audio-isolator-linux-x86_64.tar.gz`
-          3. Run installer: `./install.sh`
-          4. Launch from application menu or run: `steam-audio-isolator`
-          
-          ## What's Changed
-          
-          ${{ steps.changelog.outputs.content }}
+        body_path: release_changelog.txt
           
           ## Requirements
           
