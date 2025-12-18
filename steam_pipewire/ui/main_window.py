@@ -7,7 +7,7 @@ from PyQt5.QtWidgets import (
     QFileDialog, QMessageBox, QComboBox, QListWidget, QListWidgetItem,
     QTabWidget, QTextEdit, QSpinBox, QLineEdit, QSystemTrayIcon, QMenu, QAction,
     QGraphicsView, QGraphicsScene, QGraphicsRectItem, QGraphicsLineItem, QGraphicsTextItem,
-    QGraphicsPathItem, QGraphicsPixmapItem, QGraphicsEllipseItem
+    QGraphicsPathItem, QGraphicsPixmapItem, QGraphicsEllipseItem, QApplication
 )
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QVariant, QTimer, QPointF, QRectF, QSize, QMimeData
 from PyQt5.QtGui import QColor, QFont, QKeySequence, QIcon, QPixmap, QPainter, QPen, QBrush, QPainterPath
@@ -16,6 +16,7 @@ import os
 from steam_pipewire.pipewire.source_detector import SourceDetector
 from steam_pipewire.pipewire.controller import PipeWireController
 from steam_pipewire.utils.config import ConfigManager
+from steam_pipewire.ui.theme import ThemeManager, Theme
 
 
 class IconCache:
@@ -209,6 +210,21 @@ class SettingsDialog(QWidget):
         layout = QVBoxLayout()
         layout.setSpacing(15)
         
+        # Theme selection
+        theme_group = QGroupBox("Appearance")
+        theme_layout = QHBoxLayout()
+        theme_layout.addWidget(QLabel("Theme:"))
+        self.theme_combo = QComboBox()
+        self.theme_combo.addItems(["Light", "Dark", "System"])
+        current_theme = self.settings.get('theme', 'system')
+        theme_index = {"light": 0, "dark": 1, "system": 2}.get(current_theme.lower(), 2)
+        self.theme_combo.setCurrentIndex(theme_index)
+        self.theme_combo.currentIndexChanged.connect(self._on_settings_changed)
+        theme_layout.addWidget(self.theme_combo)
+        theme_layout.addStretch()
+        theme_group.setLayout(theme_layout)
+        layout.addWidget(theme_group)
+        
         # Restore on close
         restore_group = QGroupBox("On Application Close")
         restore_layout = QVBoxLayout()
@@ -279,13 +295,21 @@ class SettingsDialog(QWidget):
     
     def save_settings(self):
         """Save current settings"""
+        theme_map = {0: "light", 1: "dark", 2: "system"}
+        
         self.settings['restore_default_on_close'] = self.restore_checkbox.isChecked()
         self.settings['prompt_on_close'] = self.prompt_checkbox.isChecked()
         self.settings['auto_detect_interval'] = self.interval_spinbox.value()
         self.settings['minimize_to_tray'] = self.tray_checkbox.isChecked()
+        self.settings['theme'] = theme_map.get(self.theme_combo.currentIndex(), 'system')
         
         self.config.save_settings(self.settings)
         self.settings_changed.emit(self.settings)
+        
+        # Apply theme immediately
+        theme_str = self.settings['theme'].upper()
+        theme = Theme[theme_str] if theme_str in Theme.__members__ else Theme.SYSTEM
+        ThemeManager.apply_theme(QApplication.instance(), theme)
         
         # Show confirmation
         QMessageBox.information(self, "Success", "Settings saved successfully!")
@@ -311,6 +335,11 @@ class MainWindow(QMainWindow):
         
         # Load settings
         self.settings = self.config.load_settings()
+        
+        # Apply theme
+        theme_str = self.settings.get('theme', 'system').upper()
+        theme = Theme[theme_str] if theme_str in Theme.__members__ else Theme.SYSTEM
+        ThemeManager.apply_theme(QApplication.instance(), theme)
         
         # System tray
         self.tray_icon = None
@@ -490,6 +519,13 @@ class MainWindow(QMainWindow):
         
         return QIcon(pixmap)
     
+    def _update_graphics_view_theme(self):
+        """Update graphics view background color based on current theme"""
+        theme_str = self.settings.get('theme', 'system').upper()
+        theme = Theme[theme_str] if theme_str in Theme.__members__ else Theme.SYSTEM
+        colors = ThemeManager.get_colors(theme)
+        graphics_bg = colors.get('graphics_bg', '#2b2b2b')
+        self.routes_graphics_view.setStyleSheet(f"QGraphicsView {{ background-color: {graphics_bg}; }}")
 
     def tray_icon_activated(self, reason):
         """Handle tray icon activation"""
@@ -581,8 +617,8 @@ class MainWindow(QMainWindow):
         self.routes_graphics_view = QGraphicsView()
         self.routes_scene = QGraphicsScene()
         self.routes_graphics_view.setScene(self.routes_scene)
-        # Dark background matching the application theme
-        self.routes_graphics_view.setStyleSheet("QGraphicsView { background-color: #2b2b2b; }")
+        # Set background color based on theme
+        self._update_graphics_view_theme()
         self.routes_graphics_view.setMinimumHeight(300)
         self.routes_graphics_view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.routes_graphics_view.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
@@ -1608,6 +1644,9 @@ class MainWindow(QMainWindow):
             info_text = "ℹ Closing will restore default routing" if restore_on_close else "ℹ Closing will keep current routing"
         
         self.info_note.setText(info_text)
+        
+        # Update graphics view theme if theme setting changed
+        self._update_graphics_view_theme()
         
         # Restart auto-detect with new interval if it changed
         if self.auto_detect_timer:

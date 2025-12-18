@@ -18,6 +18,7 @@ class AppSettings:
     excluded_games: List[str] = field(default_factory=list)
     auto_apply_games: bool = True
     minimize_to_tray: bool = True
+    theme: str = "system"  # light, dark, or system
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization"""

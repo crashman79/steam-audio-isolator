@@ -1,5 +1,6 @@
 PyQt5==5.15.9
 pydbus==0.6.0
+darkdetect==0.8.0
 
 # Build tools (optional, only needed for creating standalone releases)
 # pyinstaller>=5.0.0
