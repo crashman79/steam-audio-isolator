@@ -209,7 +209,9 @@ class PipeWireController:
                 
                 current_link = None
                 output_node = None
+                output_port = None
                 input_node = None
+                input_port = None
                 links_checked = 0
                 
                 for line in lines:
@@ -224,12 +226,16 @@ class PipeWireController:
                                          cached.get('application.name') or f"Node {output_node}"
                             if not source_name:
                                 source_name = f"Node {output_node}"
-                            logger.debug(f"    ✓ Found: Link {current_link}, Node {output_node} → Steam ({source_name})")
+                            channel = self._get_channel_label(output_port)
+                            logger.debug(f"    ✓ Found: Link {current_link}, Node {output_node} → Steam ({source_name}) [{channel}]")
                             routes.append({
                                 'link_id': current_link,
                                 'source_node_id': output_node,
+                                'source_port_id': output_port,
                                 'source_name': source_name,
-                                'target_node_id': input_node
+                                'target_node_id': input_node,
+                                'target_port_id': input_port,
+                                'channel': channel
                             })
                         elif current_link is not None:
                             links_checked += 1
@@ -238,7 +244,9 @@ class PipeWireController:
                         
                         current_link = int(id_match.group(1))
                         output_node = None
+                        output_port = None
                         input_node = None
+                        input_port = None
                         continue
                     
                     # Match output node
@@ -246,10 +254,20 @@ class PipeWireController:
                     if out_match:
                         output_node = int(out_match.group(1))
                     
+                    # Match output port
+                    out_port_match = re.search(r'link\.output\.port\s+=\s+"?(\d+)"?', line)
+                    if out_port_match:
+                        output_port = int(out_port_match.group(1))
+                    
                     # Match input node  
                     in_match = re.search(r'link\.input\.node\s+=\s+"?(\d+)"?', line)
                     if in_match:
                         input_node = int(in_match.group(1))
+                    
+                    # Match input port
+                    in_port_match = re.search(r'link\.input\.port\s+=\s+"?(\d+)"?', line)
+                    if in_port_match:
+                        input_port = int(in_port_match.group(1))
                 
                 # Don't forget last link
                 if current_link is not None and input_node == self.steam_node_id:
@@ -259,12 +277,16 @@ class PipeWireController:
                                  cached.get('application.name') or f"Node {output_node}"
                     if not source_name:
                         source_name = f"Node {output_node}"
-                    logger.debug(f"    ✓ Found (last): Link {current_link}, Node {output_node} → Steam ({source_name})")
+                    channel = self._get_channel_label(output_port)
+                    logger.debug(f"    ✓ Found (last): Link {current_link}, Node {output_node} → Steam ({source_name}) [{channel}]")
                     routes.append({
                         'link_id': current_link,
                         'source_node_id': output_node,
+                        'source_port_id': output_port,
                         'source_name': source_name,
-                        'target_node_id': input_node
+                        'target_node_id': input_node,
+                        'target_port_id': input_port,
+                        'channel': channel
                     })
                 
                 logger.debug(f"  Checked {links_checked} links total")
@@ -276,6 +298,16 @@ class PipeWireController:
             logger.debug(f"=== ROUTE DETECTION DEBUG END ===\n")
 
         return routes
+
+    def _get_channel_label(self, port_id: int) -> str:
+        """Get human-readable channel label (Left/Right) from port ID"""
+        if port_id is None:
+            return "Unknown"
+        # Even port IDs are typically left channel, odd are right
+        if port_id % 2 == 0:
+            return "Left"
+        else:
+            return "Right"
 
     def _get_node_info(self, node_id: int) -> Dict:
         """Get node properties"""

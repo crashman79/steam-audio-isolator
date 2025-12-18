@@ -12,17 +12,12 @@ from typing import Dict, Any, List, Optional
 class AppSettings:
     """Application settings with type safety and defaults"""
     restore_default_on_close: bool = True
+    prompt_on_close: bool = True
     auto_detect_interval: int = 3  # seconds
     preferred_sink: Optional[str] = None
     excluded_games: List[str] = field(default_factory=list)
     auto_apply_games: bool = True
     minimize_to_tray: bool = True
-    shortcuts: Dict[str, str] = field(default_factory=lambda: {
-        'apply_routing': 'Ctrl+Shift+A',
-        'clear_routes': 'Ctrl+Shift+C',
-        'refresh_sources': 'F5',
-        'toggle_window': 'Ctrl+Shift+H'
-    })
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization"""
@@ -112,8 +107,11 @@ class ConfigManager:
         """Load a configuration profile"""
         try:
             filepath = self.profiles_dir / filename
+            if not filename.endswith('.pwp'):
+                filepath = filepath.with_suffix('.pwp')
+            
             if not filepath.exists():
-                filepath = Path(filename)
+                raise FileNotFoundError(f"Profile not found: {filepath}")
 
             with open(filepath, 'r') as f:
                 return json.load(f)

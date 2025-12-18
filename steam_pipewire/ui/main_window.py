@@ -5,13 +5,157 @@ from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QCheckBox, QScrollArea, QGroupBox,
     QFileDialog, QMessageBox, QComboBox, QListWidget, QListWidgetItem,
-    QTabWidget, QTextEdit, QSpinBox, QLineEdit, QSystemTrayIcon, QMenu, QAction
+    QTabWidget, QTextEdit, QSpinBox, QLineEdit, QSystemTrayIcon, QMenu, QAction,
+    QGraphicsView, QGraphicsScene, QGraphicsRectItem, QGraphicsLineItem, QGraphicsTextItem,
+    QGraphicsPathItem, QGraphicsPixmapItem, QGraphicsEllipseItem
 )
-from PyQt5.QtCore import Qt, QThread, pyqtSignal, QVariant, QTimer
-from PyQt5.QtGui import QColor, QFont, QKeySequence, QIcon, QPixmap, QPainter
+from PyQt5.QtCore import Qt, QThread, pyqtSignal, QVariant, QTimer, QPointF, QRectF, QSize, QMimeData
+from PyQt5.QtGui import QColor, QFont, QKeySequence, QIcon, QPixmap, QPainter, QPen, QBrush, QPainterPath
+from pathlib import Path
+import os
 from steam_pipewire.pipewire.source_detector import SourceDetector
 from steam_pipewire.pipewire.controller import PipeWireController
 from steam_pipewire.utils.config import ConfigManager
+
+
+class IconCache:
+    """Cache for game and application icons"""
+    _instance = None
+    _cache = {}
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+    
+    def get_icon(self, app_name: str, size: int = 32) -> QPixmap:
+        """Get icon for an application, with fallback to default"""
+        cache_key = f"{app_name}_{size}"
+        if cache_key in self._cache:
+            return self._cache[cache_key]
+        
+        pixmap = self._try_get_icon(app_name, size)
+        self._cache[cache_key] = pixmap
+        return pixmap
+    
+    def _try_get_icon(self, app_name: str, size: int) -> QPixmap:
+        """Try multiple sources to get an icon"""
+        # Try Steam library icons
+        steam_icon = self._get_steam_game_icon(app_name, size)
+        if not steam_icon.isNull():
+            return steam_icon
+        
+        # Try system icon theme
+        system_icon = self._get_system_icon(app_name, size)
+        if not system_icon.isNull():
+            return system_icon
+        
+        # Try .desktop files
+        desktop_icon = self._get_desktop_icon(app_name, size)
+        if not desktop_icon.isNull():
+            return desktop_icon
+        
+        # Return default colored pixmap
+        return self._create_default_icon(app_name, size)
+    
+    def _get_steam_game_icon(self, app_name: str, size: int) -> QPixmap:
+        """Try to get icon from Steam library"""
+        steam_dir = Path.home() / '.steam' / 'root'
+        if not steam_dir.exists():
+            steam_dir = Path.home() / '.local' / 'share' / 'Steam'
+        
+        if not steam_dir.exists():
+            return QPixmap()
+        
+        # Look in userdata for icons
+        userdata = steam_dir / 'userdata'
+        if userdata.exists():
+            for user_dir in userdata.iterdir():
+                icons_dir = user_dir / 'config' / 'shortcuts'
+                if icons_dir.exists():
+                    for icon_file in icons_dir.glob('*'):
+                        if app_name.lower() in icon_file.stem.lower():
+                            pm = QPixmap(str(icon_file))
+                            if not pm.isNull():
+                                return pm.scaledToWidth(size, Qt.SmoothTransformation)
+        
+        return QPixmap()
+    
+    def _get_system_icon(self, app_name: str, size: int) -> QPixmap:
+        """Try to get icon from system icon theme"""
+        # Search common icon locations
+        icon_paths = [
+            '/usr/share/icons/hicolor',
+            f'{Path.home()}/.local/share/icons/hicolor',
+            '/usr/share/pixmaps'
+        ]
+        
+        # Sanitize app_name for filename search
+        search_terms = [app_name.lower().split()[0], app_name.lower()]
+        
+        for icon_path in icon_paths:
+            if not Path(icon_path).exists():
+                continue
+            
+            for search_term in search_terms:
+                for icon_file in Path(icon_path).rglob(f'{search_term}*.png'):
+                    pm = QPixmap(str(icon_file))
+                    if not pm.isNull():
+                        return pm.scaledToWidth(size, Qt.SmoothTransformation)
+        
+        return QPixmap()
+    
+    def _get_desktop_icon(self, app_name: str, size: int) -> QPixmap:
+        """Try to get icon from .desktop files"""
+        desktop_dirs = [
+            '/usr/share/applications',
+            f'{Path.home()}/.local/share/applications'
+        ]
+        
+        search_term = app_name.lower().split()[0]
+        
+        for desktop_dir in desktop_dirs:
+            if not Path(desktop_dir).exists():
+                continue
+            
+            for desktop_file in Path(desktop_dir).glob('*.desktop'):
+                if search_term in desktop_file.stem.lower():
+                    try:
+                        with open(desktop_file, 'r') as f:
+                            content = f.read()
+                            # Look for Icon= line
+                            for line in content.split('\n'):
+                                if line.startswith('Icon='):
+                                    icon_name = line.split('=', 1)[1].strip()
+                                    pm = QPixmap(icon_name)
+                                    if not pm.isNull():
+                                        return pm.scaledToWidth(size, Qt.SmoothTransformation)
+                    except:
+                        pass
+        
+        return QPixmap()
+    
+    def _create_default_icon(self, app_name: str, size: int) -> QPixmap:
+        """Create a default colored icon with initials"""
+        pm = QPixmap(size, size)
+        
+        # Color based on app name hash
+        colors = [
+            QColor("#FF6B6B"), QColor("#4ECDC4"), QColor("#45B7D1"),
+            QColor("#F7B731"), QColor("#5F27CD"), QColor("#00D2D3")
+        ]
+        color = colors[hash(app_name) % len(colors)]
+        
+        pm.fill(color)
+        
+        # Draw first letter
+        painter = QPainter(pm)
+        painter.setFont(QFont("Arial", int(size * 0.6), QFont.Bold))
+        painter.setPen(QColor("white"))
+        painter.drawText(pm.rect(), Qt.AlignCenter, app_name[0].upper())
+        painter.end()
+        
+        return pm
 
 
 class SourceDetectorThread(QThread):
@@ -76,11 +220,22 @@ class SettingsDialog(QWidget):
             "When enabled, closing the app will disconnect game audio from Steam\n"
             "and reconnect the system audio sink (restoring default behavior)."
         ))
+        self.prompt_checkbox = QCheckBox("Show confirmation dialog when closing")
+        self.prompt_checkbox.setChecked(self.settings.get('prompt_on_close', True))
+        self.prompt_checkbox.stateChanged.connect(self._on_settings_changed)
+        restore_layout.addWidget(self.prompt_checkbox)
+        restore_layout.addWidget(QLabel(
+            "When enabled, a confirmation dialog appears before closing the application."
+        ))
         restore_group.setLayout(restore_layout)
         layout.addWidget(restore_group)
         
         # Auto-detect interval
         interval_group = QGroupBox("Source Auto-Detection")
+        interval_group.setToolTip(
+            "Automatically detects new game audio sources and pre-selects them (checks the box).\n"
+            "This does NOT automatically apply routing - you must still click 'Apply Routing' to connect them."
+        )
         interval_layout = QHBoxLayout()
         interval_layout.addWidget(QLabel("Check for new audio sources every:"))
         self.interval_spinbox = QSpinBox()
@@ -108,21 +263,6 @@ class SettingsDialog(QWidget):
         tray_group.setLayout(tray_layout)
         layout.addWidget(tray_group)
         
-        # Keyboard shortcuts info
-        shortcuts_group = QGroupBox("Keyboard Shortcuts")
-        shortcuts_layout = QVBoxLayout()
-        shortcuts_info = QLabel(
-            "<b>Default Shortcuts:</b><br>"
-            "• <b>Ctrl+Shift+A</b>: Apply routing<br>"
-            "• <b>Ctrl+Shift+C</b>: Clear all routes<br>"
-            "• <b>F5</b>: Refresh sources<br>"
-            "• <b>Ctrl+Shift+H</b>: Hide/Show window"
-        )
-        shortcuts_info.setTextFormat(Qt.RichText)
-        shortcuts_layout.addWidget(shortcuts_info)
-        shortcuts_group.setLayout(shortcuts_layout)
-        layout.addWidget(shortcuts_group)
-        
         layout.addStretch()
         
         # Save button
@@ -140,6 +280,7 @@ class SettingsDialog(QWidget):
     def save_settings(self):
         """Save current settings"""
         self.settings['restore_default_on_close'] = self.restore_checkbox.isChecked()
+        self.settings['prompt_on_close'] = self.prompt_checkbox.isChecked()
         self.settings['auto_detect_interval'] = self.interval_spinbox.value()
         self.settings['minimize_to_tray'] = self.tray_checkbox.isChecked()
         
@@ -180,7 +321,6 @@ class MainWindow(QMainWindow):
 
         self.init_ui()
         self.setup_system_tray()
-        self.setup_keyboard_shortcuts()
         self.detect_sources()
         self.start_auto_detect()
 
@@ -350,37 +490,7 @@ class MainWindow(QMainWindow):
         
         return QIcon(pixmap)
     
-    def setup_keyboard_shortcuts(self):
-        """Setup keyboard shortcuts"""
-        import logging
-        from PyQt5.QtWidgets import QShortcut
-        logger = logging.getLogger(__name__)
-        
-        shortcuts = self.settings.get('shortcuts', {
-            'apply_routing': 'Ctrl+Shift+A',
-            'clear_routes': 'Ctrl+Shift+C',
-            'refresh_sources': 'F5',
-            'toggle_window': 'Ctrl+Shift+H'
-        })
-        
-        # Apply routing shortcut
-        apply_shortcut = QShortcut(QKeySequence(shortcuts.get('apply_routing', 'Ctrl+Shift+A')), self)
-        apply_shortcut.activated.connect(self.apply_routing)
-        
-        # Clear routes shortcut
-        clear_shortcut = QShortcut(QKeySequence(shortcuts.get('clear_routes', 'Ctrl+Shift+C')), self)
-        clear_shortcut.activated.connect(self.clear_all_routes)
-        
-        # Refresh sources shortcut
-        refresh_shortcut = QShortcut(QKeySequence(shortcuts.get('refresh_sources', 'F5')), self)
-        refresh_shortcut.activated.connect(self.detect_sources)
-        
-        # Toggle window visibility shortcut
-        toggle_shortcut = QShortcut(QKeySequence(shortcuts.get('toggle_window', 'Ctrl+Shift+H')), self)
-        toggle_shortcut.activated.connect(self.toggle_visibility)
-        
-        logger.debug(f"Keyboard shortcuts initialized: {shortcuts}")
-    
+
     def tray_icon_activated(self, reason):
         """Handle tray icon activation"""
         if reason == QSystemTrayIcon.Trigger:
@@ -419,9 +529,13 @@ class MainWindow(QMainWindow):
         # Instructions
         instructions = QLabel(
             "Select audio sources you want to include in Steam recording.\n"
-            "Only selected sources will be captured by Steam's game recording feature."
+            "Only selected sources will be captured by Steam's game recording feature.\n\n"
+            "💡 <b>Auto-detection pre-selects games (checks boxes) but does NOT apply routing.</b>\n"
+            "You must click '<b>Apply Routing</b>' button below to activate the connections."
         )
+        instructions.setTextFormat(Qt.RichText)
         instructions.setWordWrap(True)
+        instructions.setStyleSheet("color: #333; padding: 8px; background-color: #fff9e6; border-left: 4px solid #ffc107; border-radius: 3px;")
         layout.addWidget(instructions)
 
         # Source list area
@@ -443,7 +557,8 @@ class MainWindow(QMainWindow):
 
         apply_btn = QPushButton("✓ Apply Routing")
         apply_btn.clicked.connect(self.apply_routing)
-        apply_btn.setStyleSheet("background-color: #4CAF50; color: white; padding: 5px;")
+        apply_btn.setStyleSheet("background-color: #4CAF50; color: white; padding: 5px; font-weight: bold;")
+        apply_btn.setToolTip("Click to create audio connections for checked sources.\nThis is a manual action - routing is NOT automatic.")
         button_layout.addWidget(apply_btn)
 
         clear_btn = QPushButton("✕ Clear All Routes")
@@ -462,7 +577,20 @@ class MainWindow(QMainWindow):
 
         layout.addWidget(QLabel("Currently connected audio routes to Steam:"))
 
+        # Visual graph view with dark background
+        self.routes_graphics_view = QGraphicsView()
+        self.routes_scene = QGraphicsScene()
+        self.routes_graphics_view.setScene(self.routes_scene)
+        # Dark background matching the application theme
+        self.routes_graphics_view.setStyleSheet("QGraphicsView { background-color: #2b2b2b; }")
+        self.routes_graphics_view.setMinimumHeight(300)
+        self.routes_graphics_view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.routes_graphics_view.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        layout.addWidget(self.routes_graphics_view)
+
+        # List view below
         self.routes_list = QListWidget()
+        self.routes_list.setMaximumHeight(150)
         layout.addWidget(self.routes_list)
 
         refresh_routes_btn = QPushButton("Refresh Routes")
@@ -591,16 +719,8 @@ class MainWindow(QMainWindow):
             "<li>Click <b>Apply Routing</b> to create direct connections</li>"
             "<li><b>Current Routes Tab:</b> View active audio routes</li>"
             "<li><b>Profiles Tab:</b> Save/load routing configurations</li>"
-            "<li><b>Settings Tab:</b> Configure behavior and shortcuts</li>"
+            "<li><b>Settings Tab:</b> Configure behavior and preferences</li>"
             "</ol>"
-            
-            "<h3>Keyboard Shortcuts</h3>"
-            "<p>"
-            "<b>Ctrl+Shift+A</b> - Apply routing<br>"
-            "<b>Ctrl+Shift+C</b> - Clear all routes<br>"
-            "<b>F5</b> - Refresh sources<br>"
-            "<b>Ctrl+Shift+H</b> - Hide/Show window"
-            "</p>"
             
             "<h3>Technology</h3>"
             "<p>Uses <b>PipeWire</b> audio system to route audio streams directly between "
@@ -680,7 +800,11 @@ class MainWindow(QMainWindow):
             
             # Update UI
             self.update_sources_list()
-            QMessageBox.information(self, "Success", f"Profile '{profile_name}' loaded!\n\nSelected sources:\n" + "\n".join(sources_to_select))
+            
+            # Automatically apply routing
+            self.apply_routing()
+            
+            QMessageBox.information(self, "Success", f"Profile '{profile_name}' loaded and routing applied!\n\nSelected sources:\n" + "\n".join(sources_to_select))
         except Exception as e:
             logger.error(f"Error loading profile: {e}")
             QMessageBox.critical(self, "Error", f"Failed to load profile: {e}")
@@ -870,6 +994,7 @@ class MainWindow(QMainWindow):
         # Check if we should minimize to tray instead of closing
         minimize_to_tray = self.settings.get('minimize_to_tray', True)
         restore_on_close = self.settings.get('restore_default_on_close', True)
+        prompt_on_close = self.settings.get('prompt_on_close', True)
         
         # If trying to close via window X button and tray is enabled, minimize instead
         if not self.is_closing and minimize_to_tray and self.tray_icon and self.tray_icon.isVisible():
@@ -890,8 +1015,8 @@ class MainWindow(QMainWindow):
                 self._tray_notified = True
             return
         
-        # Actually closing the application - show confirmation
-        if not hasattr(self, '_quit_confirmed') or not self._quit_confirmed:
+        # Actually closing the application - show confirmation if enabled
+        if prompt_on_close and (not hasattr(self, '_quit_confirmed') or not self._quit_confirmed):
             # Build confirmation message based on settings
             if restore_on_close:
                 message = (
@@ -1222,12 +1347,18 @@ class MainWindow(QMainWindow):
             item = QListWidgetItem("No active routes")
             item.setForeground(QColor("gray"))
             self.routes_list.addItem(item)
+            # Clear the visual graph
+            self.routes_scene.clear()
         else:
             for route in routes:
-                item_text = f"[Node {route['source_node_id']}] {route['source_name']} → Steam"
+                channel = route.get('channel', 'Unknown')
+                item_text = f"[Node {route['source_node_id']}] {route['source_name']} → Steam ({channel})"
                 item = QListWidgetItem(item_text)
                 item.setData(Qt.ItemDataRole.UserRole, QVariant(route['link_id']))
                 self.routes_list.addItem(item)
+            
+            # Draw the visual graph
+            self.draw_routes_graph(routes)
 
     def on_route_error(self, error):
         """Handle route update error"""
@@ -1235,6 +1366,201 @@ class MainWindow(QMainWindow):
         item = QListWidgetItem(f"Error loading routes: {error}")
         item.setForeground(QColor("red"))
         self.routes_list.addItem(item)
+        self.routes_scene.clear()
+
+    def draw_routes_graph(self, routes):
+        """Draw audio routes with individual source curves to Steam"""
+        self.routes_scene.clear()
+        
+        # Dimensions
+        margin = 25
+        icon_size = 36
+        cols = 2  # 2 sources per row for compact layout
+        col_spacing = 130
+        row_spacing = 100
+        steam_x = 310
+        steam_icon_size = 36
+        
+        icon_cache = IconCache()
+        
+        # Group routes by source
+        sources = {}
+        for route in routes:
+            source_id = route['source_node_id']
+            if source_id not in sources:
+                sources[source_id] = {
+                    'name': route['source_name'],
+                    'routes': []
+                }
+            sources[source_id]['routes'].append(route)
+        
+        source_list = list(sources.items())
+        source_positions = {}
+        
+        # Arrange sources in a grid (2 columns)
+        num_sources = len(source_list)
+        num_rows = (num_sources + cols - 1) // cols
+        
+        # Calculate total height and center vertically
+        grid_height = (num_rows - 1) * row_spacing + icon_size
+        start_y = max(margin, (self.routes_scene.height() - grid_height) / 2) if self.routes_scene.height() > 0 else margin
+        
+        for idx, (source_id, source_info) in enumerate(source_list):
+            source_name = source_info['name']
+            
+            # Calculate position in 2-column grid
+            row = idx // cols
+            col = idx % cols
+            icon_x = margin + col * col_spacing
+            icon_y = start_y + row * row_spacing
+            
+            # Get icon
+            icon_pixmap = icon_cache.get_icon(source_name, icon_size)
+            
+            # Draw icon
+            if not icon_pixmap.isNull():
+                icon_item = QGraphicsPixmapItem(icon_pixmap)
+                icon_item.setPos(icon_x, icon_y)
+                self.routes_scene.addItem(icon_item)
+            else:
+                # Placeholder rectangle if icon fails
+                placeholder = QGraphicsRectItem(icon_x, icon_y, icon_size, icon_size)
+                placeholder.setBrush(QBrush(QColor("#555555")))
+                placeholder.setPen(QPen(QColor("#888888"), 1))
+                self.routes_scene.addItem(placeholder)
+            
+            # Add badge with source number if multiple sources
+            if len(source_list) > 1:
+                badge_text = str(idx + 1)
+                badge = QGraphicsTextItem(badge_text)
+                badge.setDefaultTextColor(QColor("#ffffff"))
+                badge_font = QFont("Arial", 8)
+                badge_font.setWeight(QFont.Bold)
+                badge_font.setStyleStrategy(QFont.PreferAntialias)
+                badge.setFont(badge_font)
+                
+                # Badge circle parameters
+                badge_radius = 9
+                badge_center_x = icon_x + icon_size - badge_radius + 2
+                badge_center_y = icon_y - badge_radius + 2
+                
+                # Background circle
+                badge_bg = QGraphicsEllipseItem(badge_center_x - badge_radius, 
+                                               badge_center_y - badge_radius, 
+                                               badge_radius * 2, badge_radius * 2)
+                badge_bg.setBrush(QBrush(QColor("#1976D2")))
+                badge_bg.setPen(QPen(QColor("#0D47A1"), 1.5))
+                self.routes_scene.addItem(badge_bg)
+                
+                # Get text bounds to center it properly
+                text_rect = badge.boundingRect()
+                text_width = text_rect.width()
+                text_height = text_rect.height()
+                
+                # Center text in the circle
+                badge.setPos(badge_center_x - text_width / 2, badge_center_y - text_height / 2 - 2)
+                self.routes_scene.addItem(badge)
+            
+            # Connection point at right edge of icon
+            connection_x = icon_x + icon_size
+            connection_y = icon_y + icon_size / 2
+            source_positions[idx] = {
+                'x': connection_x,
+                'y': connection_y,
+                'idx': idx
+            }
+            
+            # Draw source name below icon
+            text_item = QGraphicsTextItem(source_name)
+            text_item.setDefaultTextColor(QColor("#e0e0e0"))
+            font = QFont("Arial", 6)
+            font.setStyleStrategy(QFont.PreferAntialias)
+            text_item.setFont(font)
+            text_item.setPos(icon_x, icon_y + icon_size + 2)
+            self.routes_scene.addItem(text_item)
+        
+        # Calculate Steam position - centered vertically on grid
+        bus_top = start_y
+        bus_bottom = start_y + (num_rows - 1) * row_spacing
+        steam_y = (bus_top + bus_bottom) / 2 - steam_icon_size / 2
+        
+        steam_icon_pixmap = icon_cache.get_icon("Steam", steam_icon_size)
+        steam_icon_x = steam_x
+        steam_icon_y = steam_y
+        
+        if not steam_icon_pixmap.isNull():
+            steam_icon_item = QGraphicsPixmapItem(steam_icon_pixmap)
+            steam_icon_item.setPos(steam_icon_x, steam_icon_y)
+            self.routes_scene.addItem(steam_icon_item)
+        else:
+            placeholder = QGraphicsRectItem(steam_icon_x, steam_icon_y, steam_icon_size, steam_icon_size)
+            placeholder.setBrush(QBrush(QColor("#555555")))
+            placeholder.setPen(QPen(QColor("#888888"), 1))
+            self.routes_scene.addItem(placeholder)
+        
+        steam_connection_x = steam_icon_x
+        steam_connection_y = steam_icon_y + steam_icon_size / 2
+        
+        # Steam label
+        steam_text = QGraphicsTextItem("Steam Game Recording")
+        steam_text.setDefaultTextColor(QColor("#e0e0e0"))
+        font = QFont("Arial", 6)
+        font.setStyleStrategy(QFont.PreferAntialias)
+        font.setWeight(QFont.Bold)
+        steam_text.setFont(font)
+        steam_text.setPos(steam_icon_x - 10, steam_icon_y + steam_icon_size + 2)
+        self.routes_scene.addItem(steam_text)
+        
+        # Draw individual curves from each source to Steam
+        pen = QPen(QColor("#42A5F5"), 2.5)
+        pen.setCapStyle(Qt.RoundCap)
+        pen.setJoinStyle(Qt.RoundJoin)
+        
+        # Offset to avoid overlapping icons
+        curve_offset_x = 20
+        
+        for src in source_positions.values():
+            # Start curve from a point offset to the right to avoid icons
+            start_x = src['x'] + curve_offset_x
+            start_y = src['y']
+            
+            # Draw line from icon to curve start
+            pre_line = QGraphicsLineItem(src['x'], src['y'], start_x, start_y)
+            pre_line.setPen(pen)
+            self.routes_scene.addItem(pre_line)
+            
+            # Individual curve from offset point to Steam
+            path = QPainterPath(QPointF(start_x, start_y))
+            
+            # Control points for smooth curve
+            ctrl1_x = start_x + (steam_connection_x - start_x) * 0.35
+            ctrl2_x = start_x + (steam_connection_x - start_x) * 0.65
+            
+            path.cubicTo(ctrl1_x, start_y, ctrl2_x, steam_connection_y, 
+                        steam_connection_x, steam_connection_y)
+            
+            path_item = QGraphicsPathItem(path)
+            path_item.setPen(pen)
+            self.routes_scene.addItem(path_item)
+            
+            # Dot at source connection
+            src_dot = QGraphicsEllipseItem(src['x'] - 4, src['y'] - 4, 8, 8)
+            src_dot.setBrush(QBrush(QColor("#42A5F5")))
+            src_dot.setPen(QPen(QColor("#1976D2"), 1))
+            self.routes_scene.addItem(src_dot)
+        
+        # Dot at steam connection
+        steam_dot = QGraphicsEllipseItem(steam_connection_x - 4, steam_connection_y - 4, 8, 8)
+        steam_dot.setBrush(QBrush(QColor("#42A5F5")))
+        steam_dot.setPen(QPen(QColor("#1976D2"), 1))
+        self.routes_scene.addItem(steam_dot)
+        
+        # Calculate scene rect
+        total_height = start_y + grid_height + margin + 50
+        scene_width = steam_x + steam_icon_size + margin
+        
+        self.routes_scene.setSceneRect(0, 0, scene_width, total_height)
+        self.routes_graphics_view.fitInView(self.routes_scene.sceneRect(), Qt.KeepAspectRatio)
 
     def update_system_info(self):
         """Update system information display"""

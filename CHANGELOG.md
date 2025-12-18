@@ -7,10 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3] - 2025-12-18
+
 ### Fixed
 - Removed accidental text paste on line 94 in main_window.py
-
-## [0.1.1] - 2024-12-17
+- Fixed routes diagram visualization scrollbar appearing unnecessarily
+- Updated Steam recording target label from "Steam Game" to "Steam Game Recording" for clarity
 
 ### Fixed
 - **Discord detection**: Discord now correctly categorized as "Communication" instead of "Browser"
