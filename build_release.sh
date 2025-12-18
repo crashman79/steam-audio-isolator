@@ -100,6 +100,9 @@ echo ""
 echo "You can now:"
 echo "  • Find 'Steam Audio Isolator' in your application menu"
 echo "  • Run from terminal: steam-audio-isolator"
+EOF
+
+# Make install.sh executable
 chmod +x dist/release/install.sh
 
 # Create README for release
@@ -155,9 +158,9 @@ For more information, visit:
 https://github.com/YOUR_USERNAME/steam-audio-isolator
 EOF
 
-# Create tarball
+# Create tarball (preserve file permissions with -p)
 RELEASE_NAME="steam-audio-isolator-linux-x86_64"
-tar -czf "dist/${RELEASE_NAME}.tar.gz" -C dist/release .
+tar -czpf "dist/${RELEASE_NAME}.tar.gz" -C dist/release .
 
 # Calculate size
 SIZE=$(du -h "${RELEASE_NAME}.tar.gz" | cut -f1)
