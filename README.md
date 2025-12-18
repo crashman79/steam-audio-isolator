@@ -174,6 +174,27 @@ steam_pipewire/
 
 ## Usage
 
+### Quick Start
+
+#### Step 1: Detect Audio Sources
+- Application starts and automatically detects all PipeWire audio sources
+- Sources are grouped by type: Game, Browser, System, Communication, Application
+
+#### Step 2: Select Sources
+1. Check the box next to the game you're playing
+2. **Important**: Uncheck system, browser, and other non-game sources
+3. Current selection shows immediately
+
+#### Step 3: Apply Routing
+1. Click "✓ Apply Routing"
+2. Success message confirms routes were created
+3. Steam will now record ONLY the selected game audio
+
+#### Step 4: Verify Routes
+1. Switch to "Current Routes" tab
+2. You should see connections listed (e.g., `[Node 137] Game Audio → Steam (Left)`)
+3. These routes stay active until you click "✕ Clear All Routes"
+
 ### Basic Workflow
 
 1. **Start the application** (from terminal or desktop menu)
@@ -261,30 +282,48 @@ pw-cli destroy <link_id>
 - Enable **Game Recording** for your game in Steam settings
 - Verify PipeWire is running: `systemctl --user status wireplumber`
 - Check Steam node exists: `pw-dump | grep -i steam`
+- Click **Refresh Sources** button in the app
 
 ### "No audio sources detected"
 
-**Cause**: PipeWire query issues
+**Cause**: PipeWire query issues or game not started
 
 **Solutions**:
 - Start your game **before** launching the app
-- Click **Refresh Sources** (F5)
-- Verify PipeWire tools: `which pw-dump pw-cli`
+- Check PipeWire is running: `systemctl --user status wireplumber`
+- Verify PipeWire tools are installed: `which pw-dump pw-cli`
+- Click **Refresh Sources** (F5) in the app
 - Check logs: `~/.cache/steam-audio-isolator.log`
 
-### Routes not working
+### Audio sources detected but routes not working
 
-**Cause**: Connection issues
+**Cause**: Connection or selection issues
 
 **Solutions**:
-- Check **Current Routes** tab - are routes listed?
-- Verify with: `pw-cli list-objects Link | grep Steam`
-- Try **Clear All Routes** then reapply
-- Check **System Info** tab for node IDs
+1. Return to "Audio Routing" tab
+2. Verify only game sources are checked (uncheck system/browser)
+3. Click "Clear All Routes" then "Apply Routing" again
+4. Check "Current Routes" tab and click "Refresh Routes"
+5. Switch to "System Info" tab to verify node IDs
 
-### Game audio plays but doesn't record
+### Routes not appearing in "Current Routes"
 
-**Cause**: Steam recording not active
+**Solutions**:
+1. Click "Refresh Routes" button
+2. Check "System Info" tab for node IDs
+3. Verify manually: `pw-cli list-objects Link`
+
+### Audio still being captured (unwanted sources)
+
+**Problem**: System sounds or browser audio in recording
+
+**Solution**:
+1. Return to "Audio Routing" tab
+2. Uncheck any uncategorized or system sources
+3. Keep only the game source checked
+4. Click "Apply Routing" again
+
+### Game audio plays but doesn't record in Steam
 
 **Solutions**:
 - Press Steam's recording hotkey (default: Ctrl+F11)
