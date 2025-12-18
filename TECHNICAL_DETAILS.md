@@ -1,153 +1,284 @@
-# PipeWire Technical Details
+# Technical Details
 
-This document provides technical insight into how Steam Audio Isolator works with PipeWire's audio routing system.
+Deep dive into how Steam Audio Isolator works with PipeWire's audio routing system.
 
 ## Understanding the Problem
 
-Steam's game recording feature on Linux captures audio from the system's audio sink (speakers), which means **everything** playing through your speakers gets recorded:
+Steam's game recording feature captures audio from the system's **audio sink** (speakers), which means **everything** playing through your speakers gets recorded:
 
 - Game audio ✓
 - Browser audio (YouTube, music) ✗
 - System notifications ✗
 - Discord/voice chat ✗
 
-## Example: PipeWire Node Analysis
+This happens because Steam's recording node is typically connected to the same audio sink that handles all playback.
 
-Here's a real example from running a game with Steam recording:
+## How Steam Audio Isolator Works
 
-### Key Nodes Identified
+### Node Types in PipeWire
 
-**1. Node 66: Audio Sink (Hardware)**
-- Type: `Audio/Sink`
-- Description: System audio output (speakers)
-- Role: Hardware playback device
+| Type | Example | Role |
+|------|---------|------|
+| **Audio/Sink** | Hardware speakers | System playback output (all audio) |
+| **Stream/Output/Audio** | Game audio, Browser | Application audio source |
+| **Stream/Input/Audio** | Steam recording | Application audio capture |
 
-**2. Node 137: Game Audio Output**
-- Type: `Stream/Output/Audio`
-- Application: Game running under Wine/Proton
-- Binary: `wine64-preloader`
-- Role: Game audio source
+### The Routing Strategy
 
-**3. Node 154: Steam Recording Input**
-- Type: `Stream/Input/Audio`
-- Application: Steam
-- Role: Steam's game recording capture node
-
-## Audio Routing Comparison
-
-**Without Steam Audio Isolator:**
-
+**Standard Setup (Everything Recorded):**
 ```
-Game (137) → Audio Sink (66) → Steam Recording (154)
-                ↑
-        Browser, Discord, System Audio
-        (ALL recorded together!)
+Game (137)      ─┐
+Browser (105)   ─┼─→ Audio Sink (66) ─→ Steam Recording (154)
+System (67)     ─┘
+
+Result: Game + Browser + System audio all recorded 😞
 ```
 
-**With Steam Audio Isolator:**
-
+**With Steam Audio Isolator (Game Only):**
 ```
-Game (137) → Direct Link → Steam Recording (154)
-                            (Only game audio)
+Game (137) ─────────────────┐
+                            ├─→ Steam Recording (154) ✓
+Browser (105) ─┐            │
+System (67)   ─┼─→ Audio Sink (66) ─→ Speakers ✓
+              │
+App audio  ───┘
 
-Browser/System → Audio Sink (66) → Speakers
-                                    (Not recorded)
+Result: Only game audio recorded, rest plays normally ✓
 ```
 
-## How the Application Works
+### Application Detection Logic
 
-### 1. Node Discovery
+The app categorizes sources in order of priority:
 
-The app uses `pw-dump` to query all PipeWire nodes:
+**1. Communication Apps (checked FIRST)**
+- Binary check: discord, slack, zoom, telegram, teams, skype, mumble, teamspeak
+- Name check: Similar names
+- **Why first?** Electron apps (Discord, Slack) appear as "Chromium" but have different binaries
+
+**2. Browsers**
+- Binary: firefox, chrome, chromium, opera, brave, edge, vivaldi, safari, epiphany
+- Name: Similar patterns
+- **Excludes**: Communication apps already caught in step 1
+
+**3. Games**
+- Binary: wine, proton, or contains .exe
+- Type: Stream/Output/Audio
+- **Includes**: Wine, Proton, native Linux games
+
+**4. System Audio**
+- Echo cancellation nodes (echo-cancel-*)
+- Dummy drivers
+- ALSA, Pulse, JACK nodes
+- Internal mixers
+
+**5. Everything Else**
+- Categorized as "Application"
+
+### Routing Process
+
+When you click **"Apply Routing"**:
+
+1. **Enumerate all nodes** via `pw-dump`
+2. **Identify Steam node** by checking `application.name == "Steam"`
+3. **Find selected source nodes** (your game selections)
+4. **Disconnect sink→Steam links** (remove default routing)
+5. **Create source→Steam links** (direct game audio routes)
+6. **Update visualization** in real-time
+
+### Cleanup Process
+
+When you click **"Clear All Routes"**:
+
+1. **Disconnect all source→Steam links**
+2. **Optionally reconnect sink→Steam** (if "Restore default on close" is enabled)
+3. **Visualization updates** to show no active routes
+
+## Real-World Example
+
+### Before Running the App
 
 ```bash
-pw-dump | jq '.[] | select(.type == "PipeWire:Interface:Node")'
+$ pw-dump | jq '.[] | select(.type == "PipeWire:Interface:Link")'
+{
+  "id": 100,
+  "direction": "->",
+  "ports": [66, 154]  # Audio Sink → Steam Recording
+}
 ```
 
-### 2. Game Detection
+This shows the audio sink is connected to Steam recording (the problem).
 
-Identifies game audio by checking node properties:
-
-- `application.process.binary` contains: `wine`, `proton`, `.exe`
-- `media.class` = `Stream/Output/Audio` (audio producer)
-- Excludes system nodes: `echo-cancel-*`, `dummy-driver`, `alsa`, `pulse`
-
-### 3. Steam Node Discovery
-
-Locates Steam's recording input:
+### After Running the App
 
 ```bash
+$ pw-dump | jq '.[] | select(.type == "PipeWire:Interface:Link")'
+[
+  {
+    "id": 100,
+    "ports": [66, 154]  # REMOVED: Audio Sink → Steam
+  },
+  {
+    "id": 200,
+    "ports": [137, 154]  # ADDED: Game → Steam
+  }
+]
+```
+
+Now only the game audio reaches Steam.
+
+## PipeWire Command Reference
+
+```bash
+# List all nodes with their IDs and types
+pw-dump | jq '.[] | select(.type == "PipeWire:Interface:Node") | {id: .id, name: .info.props."node.name", app: .info.props."application.name"}'
+
+# Find a specific application
 pw-dump | jq '.[] | select(.info.props."application.name" == "Steam")'
-```
 
-### 4. Direct Routing
-
-Creates point-to-point connection using `pw-cli`:
-
-```bash
-pw-cli connect <game_node_id> <steam_node_id>
-```
-
-This bypasses the audio sink entirely, so only game audio reaches Steam.
-
-### 5. Route Management
-
-- Lists active links: `pw-cli list-objects Link`
-- Removes routes: `pw-cli destroy <link_id>`
-- Monitors for new nodes in real-time
-
-## PipeWire Commands Reference
-
-### View all audio nodes
-```bash
-pw-dump | jq '.[] | select(.type == "PipeWire:Interface:Node")'
-```
-
-### Find specific node by name
-```bash
-pw-dump | jq '.[] | select(.info.props."node.name" | contains("game"))'
-```
-
-### List active connections
-```bash
+# List all active audio connections
 pw-cli list-objects Link
+
+# Get detailed info about a node
+pw-cli info 137
+
+# Create a connection between nodes
+pw-cli create-link 137 154
+
+# Destroy a connection
+pw-cli destroy 200
+
+# Check for connections to a specific node (Steam)
+pw-dump | jq '.[] | select(.type == "PipeWire:Interface:Link") | select(.ports[] | contains(154))'
 ```
 
-### Get detailed node info
-```bash
-pw-cli info <node_id>
+## Stream Purpose Detection
+
+When a game has multiple audio streams, the app attempts to identify:
+
+- **Main audio** - Primary game music/SFX
+- **UI sounds** - Menu clicks, notifications
+- **Voice chat** - Communication audio
+
+This is based on stream names and ports, allowing selective routing if desired.
+
+## Configuration Files
+
+### Settings Storage
+```
+~/.config/steam-audio-isolator/settings.json
+{
+  "restore_on_close": true,           # Reconnect sink when exiting
+  "auto_detect_interval": 3.0,        # Seconds between source checks
+  "minimize_to_tray": true            # Hide instead of close
+}
 ```
 
-### Create audio route
-```bash
-pw-cli connect <source_id> <destination_id>
+### Profile Storage
+```
+~/.config/steam-audio-isolator/profiles/game-only.pwp
+{
+  "name": "Game Only",
+  "sources": [137, 138, 152]          # Node IDs to route
+}
 ```
 
-### Remove route
-```bash
-pw-cli destroy <link_id>
+### Log Files
+```
+~/.cache/steam-audio-isolator.log     # Debug logs with timestamps
 ```
 
-## Node Types
+## Visualization Diagram
 
-- **Audio/Sink**: Hardware output device (speakers, headphones)
-- **Audio/Source**: Hardware input device (microphone)
-- **Stream/Output/Audio**: Application audio output (games, music players)
-- **Stream/Input/Audio**: Application audio input (recording, VOIP)
+The **Current Routes** tab displays a diagram showing:
 
-## Why This Approach Works
+- **2-column grid** of your audio sources with icons
+- **Numbered badges** (#1, #2, etc.) for multiple sources from same app
+- **Curved connection lines** from each source to Steam Game Recording
+- **Real-time updates** as routes change
 
-1. **Selective Routing**: Only chosen sources connect to Steam
-2. **Dual Playback**: Game audio can simultaneously go to speakers AND Steam
-3. **No System Impact**: Browser, notifications, etc. still play normally
-4. **Real-time**: Changes take effect immediately without restart
-5. **Reversible**: Easy to restore default routing
+The diagram makes it visually clear which sources are connected to Steam.
+
+## Key Design Decisions
+
+### Why Direct Routing?
+- ✓ **Clean audio**: No unwanted sources mixed in
+- ✓ **Low latency**: Direct connections, no intermediate processing
+- ✓ **Reversible**: Easy to restore default behavior
+- ✓ **Dual output**: Game audio can go to both speakers AND Steam
+
+### Why Auto-Detection?
+- ✓ **User convenience**: Don't ask which is game audio
+- ✓ **Reliable**: Process binaries are consistent
+- ✓ **Fast**: Detection happens in < 100ms
+
+### Why PipeWire?
+- Modern Linux audio system with fine-grained control
+- Graph-based routing (not stream-based like Pulse)
+- Supports exactly what we need: node enumeration + link creation
+- Replaces PulseAudio on newer distributions
 
 ## Debugging Tips
 
-### Check PipeWire is running
+### Enable verbose logging
 ```bash
+# Check logs in real-time
+tail -f ~/.cache/steam-audio-isolator.log
+
+# Or set log level (if implemented)
+export STEAM_AUDIO_DEBUG=1
+steam-audio-isolator
+```
+
+### Verify PipeWire state
+```bash
+# Check if wireplumber is running
 systemctl --user status wireplumber
+
+# Monitor PipeWire changes in real-time
+pw-mon
+
+# Check PipeWire version
+pw-dump | head -5
+```
+
+### Manually check Steam node
+```bash
+# Find Steam in the output
+pw-dump | jq '.[] | select(.info.props."application.name" | contains("Steam"))'
+
+# Check if it has audio connections
+pw-cli list-objects Link | grep -A2 -B2 "node_id.*154"
+```
+
+### Troubleshoot a route
+```bash
+# Verify a route was created
+pw-cli list-objects Link | grep "137"  # Check if node 137 connected
+
+# Get details on the link
+pw-cli info 200  # Use link ID from above
+
+# Remove problematic link
+pw-cli destroy 200
+
+# Recreate it manually
+pw-cli create-link 137 154
+```
+
+## Future Improvements
+
+- Per-stream routing (select which game streams go to Steam)
+- Audio level monitoring with visual indicators
+- Automatic route creation based on Steam's current game
+- Advanced PipeWire configuration export/import
+- User-customizable app detection patterns
+
+## References
+
+- [PipeWire Documentation](https://pipewire.org/)
+- [pw-dump Reference](https://manpages.debian.org/bookworm/pipewire/pw-dump.1.en.html)
+- [pw-cli Reference](https://manpages.debian.org/bookworm/pipewire/pw-cli.1.en.html)
+- [Steam Game Recording on Linux](https://support.steampowered.com/kb_article.php?ref=8789-YDXV-8589)
 ```
 
 ### View graph in real-time
