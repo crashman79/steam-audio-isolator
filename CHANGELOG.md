@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.6] - 2025-12-18
+
+### Added
+- **Theme support**: Complete Light/Dark/System theme system
+  - Theme selector in Settings dialog with Light, Dark, and System (auto-detect) options
+  - Dark theme uses darkdetect library to automatically match system appearance
+  - Graphics view (audio routing diagram) now respects theme colors
+  - Theme preference persists across sessions
+
+### Fixed
+- Graphics view background color now dynamically updates when theme changes
+- Diagram window properly follows theme settings instead of hardcoded dark color
+
 ## [0.1.5] - 2025-12-18
 
 ### Added
