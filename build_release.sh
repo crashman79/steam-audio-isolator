@@ -50,6 +50,37 @@ pyinstaller --name="steam-audio-isolator" \
 echo "Creating release package..."
 mkdir -p dist/release
 
+# Extract version from setup.py for changelog extraction
+VERSION=$(grep "version=" setup.py | head -1 | sed "s/.*version=['\"]//;s/['\"].*//" | sed 's/^v//')
+
+# Extract changelog for this version
+echo "Extracting changelog for version $VERSION..."
+python3 << PYSCRIPT
+import re
+import sys
+
+version = "$VERSION"
+
+try:
+    with open("CHANGELOG.md", "r") as f:
+        content = f.read()
+    
+    # Find the version section
+    pattern = rf"## \[{re.escape(version)}\].*?(?=## \[|$)"
+    match = re.search(pattern, content, re.DOTALL)
+    
+    if match:
+        changelog_section = match.group(0).strip()
+        with open("dist/release/CHANGELOG.md", "w") as f:
+            f.write("# Changelog for v" + version + "\n\n")
+            f.write(changelog_section)
+        print(f"✓ Changelog extracted for v{version}")
+    else:
+        print(f"Warning: Could not find changelog section for v{version}")
+except Exception as e:
+    print(f"Warning: Failed to extract changelog: {e}")
+PYSCRIPT
+
 # Copy files to release directory
 echo "Copying files to release directory..."
 cp dist/steam-audio-isolator dist/release/
@@ -177,6 +208,9 @@ echo "  • install.sh (automatic installer)"
 echo "  • steam-audio-isolator-256.png (icon)"
 echo "  • steam-audio-isolator.desktop (desktop entry)"
 echo "  • README.txt (instructions)"
+if [ -f "dist/release/CHANGELOG.md" ]; then
+    echo "  • CHANGELOG.md (version history)"
+fi
 echo ""
 echo "Upload this file to GitHub Releases!"
 echo ""
