@@ -63,7 +63,6 @@ Steam's game recording feature on Linux captures all audio sources by default. T
 
 ### UI & UX
 - 🪟 **System Tray Integration** - Minimize to tray with custom cyan icon
-- ⌨️ **Keyboard Shortcuts** - Quick access (Ctrl+Shift+A/C, F5, Ctrl+Shift+H)
 - 🔄 **Real-Time Updates** - Auto-detect new audio sources
 - ℹ️ **Built-in Help** - Comprehensive About tab with usage guide
 
@@ -183,15 +182,6 @@ steam_pipewire/
    - Uncheck browser/system audio to exclude them
 3. **Click "Apply Routing"** to create direct connections
 4. **Start recording in Steam** - Only selected audio is captured!
-
-### Keyboard Shortcuts
-
-| Shortcut | Action |
-|----------|--------|
-| `Ctrl+Shift+A` | Apply routing |
-| `Ctrl+Shift+C` | Clear all routes |
-| `F5` | Refresh audio sources |
-| `Ctrl+Shift+H` | Hide/Show window |
 
 ### Profiles
 
