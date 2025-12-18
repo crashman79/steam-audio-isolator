@@ -231,8 +231,13 @@ class SourceDetector:
                 'vivaldi', 'safari', 'epiphany']):
             return 'Browser'
         
-        # ALSA/system audio devices
-        if any(x in node_name for x in ['alsa', 'jack', 'pulse']):
+        # ALSA/system audio devices and Bluetooth devices
+        if any(x in node_name for x in ['alsa', 'jack', 'pulse', 'bluez', 'bluetooth', 'hci']):
+            return 'System'
+        
+        # Check for Bluetooth in device/driver properties
+        device_name = props.get('device.name', '').lower()
+        if any(x in device_name for x in ['bluez', 'bluetooth', 'hci']):
             return 'System'
         
         # Default to Application
