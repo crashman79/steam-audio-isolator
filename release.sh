@@ -59,6 +59,9 @@ RELEASE_DATE=$(date +%Y-%m-%d)
 python3 << PYSCRIPT
 import re
 
+NEW_VERSION = "$NEW_VERSION"
+RELEASE_DATE = "$RELEASE_DATE"
+
 with open("CHANGELOG.md", "r") as f:
     content = f.read()
 
