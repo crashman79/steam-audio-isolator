@@ -7,18 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.6] - 2025-12-18
-
-### Added
-- **Theme support**: Complete Light/Dark/System theme system
-  - Theme selector in Settings dialog with Light, Dark, and System (auto-detect) options
-  - Dark theme uses darkdetect library to automatically match system appearance
-  - Graphics view (audio routing diagram) now respects theme colors
-  - Theme preference persists across sessions
+## [0.1.6] - 2025-12-20
 
 ### Fixed
-- Graphics view background color now dynamically updates when theme changes
-- Diagram window properly follows theme settings instead of hardcoded dark color
+- **Critical fix**: Audio sink (speakers) now properly disconnected from Steam during routing
+  - Previously hardcoded audio sink node ID (66), now dynamically detected
+  - Fixes issue where system audio leaked into Steam recordings
+  - Properly removes all three interfering routes: game→sink, sink→Steam, game→Steam
+- Route diagram no longer drifts or changes size when refreshing
+- Steam game icons now display correctly (uses Qt icon theme to find steam_icon_* files)
+- Wine/Proton games without Steam icons now show colored fallback instead of generic Wine icon
+- Internal/monitoring streams (e.g. Bluetooth monitoring) now filtered out and won't be auto-selected
+
+### Changed
+- **Auto-apply routing disabled by default** - users must now manually click "Apply Routing"
+  - Games are still auto-detected and pre-selected in the list
+  - This prevents unwanted automatic routing changes
+  - Added checkbox in Settings to enable auto-apply if desired
+- Diagram reduced by 20% for more compact display
+- Routing instructions now update dynamically based on auto-apply setting
+
+### Added
+- Auto-apply routing setting in preferences (Settings tab)
+- Dynamic instruction text on routing tab that reflects current auto-apply state
 
 ## [0.1.5] - 2025-12-18
 

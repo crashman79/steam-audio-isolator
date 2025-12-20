@@ -117,9 +117,13 @@ class SourceDetector:
                 media_class = props.get('media.class', '')
 
                 # Look for stream outputs (like games, applications) that produce audio
-                # Skip inputs, sinks, system nodes, and Steam's own node
+                # Skip inputs, sinks, system nodes, internal streams, and Steam's own node
                 if not any(cls in media_class for cls in 
                           ['Stream/Output/Audio', 'Audio/Source']):
+                    continue
+                
+                # Skip internal/monitoring streams explicitly
+                if 'Internal' in media_class or 'Stream/Input' in media_class:
                     continue
                 
                 # Skip system echo-cancel and internal nodes
