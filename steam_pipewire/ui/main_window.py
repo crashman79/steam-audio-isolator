@@ -41,23 +41,66 @@ class IconCache:
     
     def _try_get_icon(self, app_name: str, size: int) -> QPixmap:
         """Try multiple sources to get an icon"""
-        # Try Steam library icons
+        # First, try Qt icon theme (picks up steam_icon_* and other system icons)
+        qt_icon = QIcon.fromTheme(app_name.lower())
+        if not qt_icon.isNull():
+            pixmap = qt_icon.pixmap(size, size)
+            if not pixmap.isNull():
+                return pixmap
+        
+        # Try with "steam_icon_" prefix for Steam games
+        # Look for desktop file to get the icon name
+        desktop_icon_name = self._get_desktop_icon_name(app_name)
+        if desktop_icon_name:
+            qt_icon = QIcon.fromTheme(desktop_icon_name)
+            if not qt_icon.isNull():
+                pixmap = qt_icon.pixmap(size, size)
+                if not pixmap.isNull():
+                    return pixmap
+        
+        # For Wine/Proton games without Steam icons, skip system search
+        app_lower = app_name.lower()
+        if any(wine_indicator in app_lower for wine_indicator in ['.exe', 'wine', 'proton']):
+            return self._create_default_icon(app_name, size)
+        
+        # Try Steam library cache
         steam_icon = self._get_steam_game_icon(app_name, size)
         if not steam_icon.isNull():
             return steam_icon
         
-        # Try system icon theme
+        # Try system icon files directly
         system_icon = self._get_system_icon(app_name, size)
         if not system_icon.isNull():
             return system_icon
         
-        # Try .desktop files
-        desktop_icon = self._get_desktop_icon(app_name, size)
-        if not desktop_icon.isNull():
-            return desktop_icon
-        
         # Return default colored pixmap
         return self._create_default_icon(app_name, size)
+    
+    def _get_desktop_icon_name(self, app_name: str) -> str:
+        """Get icon name from .desktop file"""
+        desktop_dirs = [
+            f'{Path.home()}/.local/share/applications',
+            '/usr/share/applications'
+        ]
+        
+        search_term = app_name.lower()
+        
+        for desktop_dir in desktop_dirs:
+            if not Path(desktop_dir).exists():
+                continue
+            
+            for desktop_file in Path(desktop_dir).glob('*.desktop'):
+                if search_term in desktop_file.stem.lower():
+                    try:
+                        with open(desktop_file, 'r') as f:
+                            for line in f:
+                                if line.startswith('Icon='):
+                                    icon_name = line.split('=', 1)[1].strip()
+                                    return icon_name
+                    except:
+                        pass
+        
+        return ""
     
     def _get_steam_game_icon(self, app_name: str, size: int) -> QPixmap:
         """Try to get icon from Steam library"""
@@ -92,17 +135,37 @@ class IconCache:
         ]
         
         # Sanitize app_name for filename search
-        search_terms = [app_name.lower().split()[0], app_name.lower()]
+        search_term = app_name.lower().split()[0]
         
+        # Avoid generic icons (wine, proton, etc.) - prefer game-specific
+        skip_patterns = ['wine', 'proton', 'steam-launch', 'wineserver']
+        
+        best_match = None
         for icon_path in icon_paths:
             if not Path(icon_path).exists():
                 continue
             
-            for search_term in search_terms:
-                for icon_file in Path(icon_path).rglob(f'{search_term}*.png'):
-                    pm = QPixmap(str(icon_file))
-                    if not pm.isNull():
-                        return pm.scaledToWidth(size, Qt.SmoothTransformation)
+            # First try exact name match
+            for icon_file in Path(icon_path).rglob(f'{search_term}.png'):
+                # Skip generic icons
+                if any(skip in icon_file.name.lower() for skip in skip_patterns):
+                    continue
+                pm = QPixmap(str(icon_file))
+                if not pm.isNull():
+                    return pm.scaledToWidth(size, Qt.SmoothTransformation)
+            
+            # Then try prefix match, but be selective
+            for icon_file in Path(icon_path).rglob(f'{search_term}*.png'):
+                # Skip generic icons
+                if any(skip in icon_file.name.lower() for skip in skip_patterns):
+                    continue
+                if best_match is None:
+                    best_match = icon_file
+        
+        if best_match:
+            pm = QPixmap(str(best_match))
+            if not pm.isNull():
+                return pm.scaledToWidth(size, Qt.SmoothTransformation)
         
         return QPixmap()
     
@@ -248,20 +311,31 @@ class SettingsDialog(QWidget):
         
         # Auto-detect interval
         interval_group = QGroupBox("Source Auto-Detection")
-        interval_group.setToolTip(
-            "Automatically detects new game audio sources and pre-selects them (checks the box).\n"
-            "This does NOT automatically apply routing - you must still click 'Apply Routing' to connect them."
-        )
-        interval_layout = QHBoxLayout()
-        interval_layout.addWidget(QLabel("Check for new audio sources every:"))
+        interval_layout = QVBoxLayout()
+        
+        # Auto-detect interval spinner
+        interval_row = QHBoxLayout()
+        interval_row.addWidget(QLabel("Check for new audio sources every:"))
         self.interval_spinbox = QSpinBox()
         self.interval_spinbox.setMinimum(1)
         self.interval_spinbox.setMaximum(30)
         self.interval_spinbox.setValue(self.settings.get('auto_detect_interval', 3))
         self.interval_spinbox.setSuffix(" seconds")
         self.interval_spinbox.valueChanged.connect(self._on_settings_changed)
-        interval_layout.addWidget(self.interval_spinbox)
-        interval_layout.addStretch()
+        interval_row.addWidget(self.interval_spinbox)
+        interval_row.addStretch()
+        interval_layout.addLayout(interval_row)
+        
+        # Auto-apply routing checkbox
+        self.auto_apply_checkbox = QCheckBox("Automatically apply routing when new games are detected")
+        self.auto_apply_checkbox.setChecked(self.settings.get('auto_apply_games', False))
+        self.auto_apply_checkbox.stateChanged.connect(self._on_settings_changed)
+        interval_layout.addWidget(self.auto_apply_checkbox)
+        interval_layout.addWidget(QLabel(
+            "When enabled, detected games will be automatically connected to Steam recording.\n"
+            "When disabled, you must manually click 'Apply Routing' after games are detected."
+        ))
+        
         interval_group.setLayout(interval_layout)
         layout.addWidget(interval_group)
         
@@ -300,6 +374,7 @@ class SettingsDialog(QWidget):
         self.settings['restore_default_on_close'] = self.restore_checkbox.isChecked()
         self.settings['prompt_on_close'] = self.prompt_checkbox.isChecked()
         self.settings['auto_detect_interval'] = self.interval_spinbox.value()
+        self.settings['auto_apply_games'] = self.auto_apply_checkbox.isChecked()
         self.settings['minimize_to_tray'] = self.tray_checkbox.isChecked()
         self.settings['theme'] = theme_map.get(self.theme_combo.currentIndex(), 'system')
         
@@ -313,6 +388,10 @@ class SettingsDialog(QWidget):
         
         # Show confirmation
         QMessageBox.information(self, "Success", "Settings saved successfully!")
+    
+    def get_settings(self):
+        """Get current settings"""
+        return self.settings
 
 
 class MainWindow(QMainWindow):
@@ -562,17 +641,13 @@ class MainWindow(QMainWindow):
         widget = QWidget()
         layout = QVBoxLayout()
 
-        # Instructions
-        instructions = QLabel(
-            "Select audio sources you want to include in Steam recording.\n"
-            "Only selected sources will be captured by Steam's game recording feature.\n\n"
-            "💡 <b>Auto-detection pre-selects games (checks boxes) but does NOT apply routing.</b>\n"
-            "You must click '<b>Apply Routing</b>' button below to activate the connections."
-        )
-        instructions.setTextFormat(Qt.RichText)
-        instructions.setWordWrap(True)
-        instructions.setStyleSheet("color: #333; padding: 8px; background-color: #fff9e6; border-left: 4px solid #ffc107; border-radius: 3px;")
-        layout.addWidget(instructions)
+        # Instructions (dynamic based on auto-apply setting)
+        self.routing_instructions = QLabel()
+        self.routing_instructions.setTextFormat(Qt.RichText)
+        self.routing_instructions.setWordWrap(True)
+        self.routing_instructions.setStyleSheet("color: #333; padding: 8px; background-color: #fff9e6; border-left: 4px solid #ffc107; border-radius: 3px;")
+        self._update_routing_instructions()
+        layout.addWidget(self.routing_instructions)
 
         # Source list area
         scroll = QScrollArea()
@@ -961,7 +1036,7 @@ class MainWindow(QMainWindow):
             
             # Check for new game sources
             excluded_games = self.config.get_excluded_games()
-            auto_apply_enabled = self.settings.get('auto_apply_games', True)
+            auto_apply_enabled = self.settings.get('auto_apply_games', False)  # Default to False - require user action
             
             current_games = {s['name'] for s in current_sources if s['type'] == 'Game'}
             new_games = current_games - self.previously_detected_games - set(excluded_games)
@@ -1408,14 +1483,14 @@ class MainWindow(QMainWindow):
         """Draw audio routes with individual source curves to Steam"""
         self.routes_scene.clear()
         
-        # Dimensions
-        margin = 25
-        icon_size = 36
+        # Dimensions - reduced by 20% for more compact display
+        margin = 20
+        icon_size = 28  # was 36
         cols = 2  # 2 sources per row for compact layout
-        col_spacing = 130
-        row_spacing = 100
-        steam_x = 310
-        steam_icon_size = 36
+        col_spacing = 104  # was 130
+        row_spacing = 80  # was 100
+        steam_x = 248  # was 310
+        steam_icon_size = 28  # was 36
         
         icon_cache = IconCache()
         
@@ -1437,9 +1512,9 @@ class MainWindow(QMainWindow):
         num_sources = len(source_list)
         num_rows = (num_sources + cols - 1) // cols
         
-        # Calculate total height and center vertically
+        # Calculate total height - use fixed start position to prevent drift
         grid_height = (num_rows - 1) * row_spacing + icon_size
-        start_y = max(margin, (self.routes_scene.height() - grid_height) / 2) if self.routes_scene.height() > 0 else margin
+        start_y = margin  # Fixed starting position instead of calculating from scene height
         
         for idx, (source_id, source_info) in enumerate(source_list):
             source_name = source_info['name']
@@ -1555,6 +1630,9 @@ class MainWindow(QMainWindow):
         # Offset to avoid overlapping icons
         curve_offset_x = 20
         
+        steam_connection_x = steam_icon_x
+        steam_connection_y = steam_icon_y + steam_icon_size / 2
+        
         for src in source_positions.values():
             # Start curve from a point offset to the right to avoid icons
             start_x = src['x'] + curve_offset_x
@@ -1591,11 +1669,15 @@ class MainWindow(QMainWindow):
         steam_dot.setPen(QPen(QColor("#1976D2"), 1))
         self.routes_scene.addItem(steam_dot)
         
-        # Calculate scene rect
+        # Set fixed scene rect for consistent layout
         total_height = start_y + grid_height + margin + 50
         scene_width = steam_x + steam_icon_size + margin
         
         self.routes_scene.setSceneRect(0, 0, scene_width, total_height)
+        
+        # Reset view to show entire scene at consistent scale
+        # Use resetTransform to avoid accumulation of transforms
+        self.routes_graphics_view.resetTransform()
         self.routes_graphics_view.fitInView(self.routes_scene.sceneRect(), Qt.KeepAspectRatio)
 
     def update_system_info(self):
@@ -1634,6 +1716,9 @@ class MainWindow(QMainWindow):
         # Update internal settings
         self.settings = new_settings
         
+        # Update routing instructions based on auto_apply setting
+        self._update_routing_instructions()
+        
         # Update info note based on both restore_default_on_close and minimize_to_tray settings
         restore_on_close = new_settings.get('restore_default_on_close', True)
         minimize_to_tray = new_settings.get('minimize_to_tray', True)
@@ -1647,6 +1732,27 @@ class MainWindow(QMainWindow):
         
         # Update graphics view theme if theme setting changed
         self._update_graphics_view_theme()
+    
+    def _update_routing_instructions(self):
+        """Update routing instructions text based on auto-apply setting"""
+        auto_apply = self.settings.get('auto_apply_games', False)
+        
+        if auto_apply:
+            text = (
+                "Select audio sources you want to include in Steam recording.\n"
+                "Only selected sources will be captured by Steam's game recording feature.\n\n"
+                "🔄 <b>Auto-apply is ENABLED</b> - New games will be automatically routed to Steam.\n"
+                "You can manually click '<b>Apply Routing</b>' to update connections at any time."
+            )
+        else:
+            text = (
+                "Select audio sources you want to include in Steam recording.\n"
+                "Only selected sources will be captured by Steam's game recording feature.\n\n"
+                "💡 <b>Auto-apply is DISABLED</b> - New games are detected and selected, but NOT connected.\n"
+                "You must click '<b>Apply Routing</b>' button below to activate the connections."
+            )
+        
+        self.routing_instructions.setText(text)
         
         # Restart auto-detect with new interval if it changed
         if self.auto_detect_timer:
