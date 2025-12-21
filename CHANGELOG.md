@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Critical fix**: Bluetooth devices no longer detected as audio sources and routed to Steam
+  - Added filtering for Bluetooth nodes during source detection (bluez, bluetooth, bt_, hci)
+  - Added validation in routing logic to reject Bluetooth devices, audio sinks, and output devices
+  - Prevents Bluetooth earbuds/headphones from being incorrectly routed to Steam recording
+- **Critical fix**: Game audio now properly continues to play through speakers when routing is applied
+  - Removed incorrect logic that was disconnecting game→sink (speakers) connections
+  - Game audio now has TWO simultaneous connections: game→speakers (for playback) AND game→Steam (for recording)
+  - Only sink→Steam connection is removed to prevent ALL system audio from being recorded
+- Added comprehensive Bluetooth device filtering in multiple detection points
+
+### Changed
+- Routing logic now preserves game→sink connections to maintain audio playback
+- Improved logging for filtered Bluetooth and invalid audio nodes
+
 ## [0.1.7] - 2025-12-20
 
 ### Fixed
