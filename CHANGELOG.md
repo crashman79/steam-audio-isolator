@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.8] - 2025-12-21
+
 ### Fixed
 - **Critical fix**: Bluetooth devices no longer detected as audio sources and routed to Steam
   - Added filtering for Bluetooth nodes during source detection (bluez, bluetooth, bt_, hci)
