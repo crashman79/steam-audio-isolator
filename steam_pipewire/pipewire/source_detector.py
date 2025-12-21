@@ -131,6 +131,25 @@ class SourceDetector:
                 if any(x in node_name for x in ['echo-cancel', 'dummy', 'freewheel']):
                     continue
                 
+                # Skip Bluetooth devices and other audio sinks/outputs
+                # These are audio output devices, not sources that should be routed to Steam
+                device_name = props.get('device.name', '').lower()
+                node_description = props.get('node.description', '').lower()
+                if any(x in node_name for x in ['bluez', 'bluetooth', 'bt_', 'hci']):
+                    logger.debug(f"Skipping Bluetooth node: {node_name}")
+                    continue
+                if any(x in device_name for x in ['bluez', 'bluetooth', 'bt_', 'hci']):
+                    logger.debug(f"Skipping Bluetooth device: {device_name}")
+                    continue
+                if any(x in node_description for x in ['bluetooth', 'headset', 'earbuds', 'airpods']):
+                    logger.debug(f"Skipping Bluetooth description: {node_description}")
+                    continue
+                
+                # Skip ALSA/PulseAudio loopback and monitor sources
+                if any(x in node_name for x in ['alsa_input', 'alsa_output', 'monitor', 'loopback']):
+                    logger.debug(f"Skipping ALSA/monitor node: {node_name}")
+                    continue
+                
                 # Skip Steam's own recording node
                 app_name = props.get('application.name', '')
                 if app_name == 'Steam':

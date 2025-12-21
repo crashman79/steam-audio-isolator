@@ -368,10 +368,12 @@ class PipeWireController:
             if not audio_sink_id:
                 logger.warning("Audio sink not found - will only disconnect game→Steam routes")
             
-            # Disconnect all existing routes that would interfere:
-            # 1. Game → Audio Sink (default route that also goes to Steam)
-            # 2. Game → Steam (any existing direct routes)
-            # 3. Audio Sink → Steam (prevents system audio leaking into recording)
+            # Disconnect only routes that would interfere with clean recording:
+            # 1. Audio Sink → Steam (prevents ALL system audio from being recorded)
+            # 2. Game → Steam (any existing direct routes, we'll recreate them)
+            # 
+            # IMPORTANT: Do NOT disconnect Game → Audio Sink routes!
+            # Game audio needs to continue playing through speakers.
             routes_to_remove = []
             
             try:
@@ -396,18 +398,15 @@ class PipeWireController:
                         if id_match:
                             # Check previous link
                             if current_link is not None:
-                                # Case 1: Audio sink → Steam
+                                # Case 1: Audio sink → Steam (blocks ALL system audio from recording)
                                 if audio_sink_id and output_node == audio_sink_id and input_node == target_node_id:
-                                    logger.debug(f"  Found sink({audio_sink_id})→Steam link: {current_link}")
+                                    logger.debug(f"  Found sink({audio_sink_id})→Steam link: {current_link} (will remove)")
                                     routes_to_remove.append(current_link)
-                                # Case 2: Selected game → Audio sink
-                                elif audio_sink_id and output_node in source_ids and input_node == audio_sink_id:
-                                    logger.debug(f"  Found game({output_node})→sink({audio_sink_id}) link: {current_link}")
-                                    routes_to_remove.append(current_link)
-                                # Case 3: Selected game → Steam (existing direct route)
+                                # Case 2: Selected game → Steam (existing direct route, will recreate)
                                 elif output_node in source_ids and input_node == target_node_id:
-                                    logger.debug(f"  Found game({output_node})→Steam link: {current_link}")
+                                    logger.debug(f"  Found game({output_node})→Steam link: {current_link} (will remove)")
                                     routes_to_remove.append(current_link)
+                                # REMOVED: Don't disconnect game→sink! Game audio must reach speakers.
                             
                             current_link = int(id_match.group(1))
                             output_node = None
@@ -425,13 +424,10 @@ class PipeWireController:
                     # Check last link
                     if current_link is not None:
                         if audio_sink_id and output_node == audio_sink_id and input_node == target_node_id:
-                            logger.debug(f"  Found sink({audio_sink_id})→Steam link (last): {current_link}")
-                            routes_to_remove.append(current_link)
-                        elif audio_sink_id and output_node in source_ids and input_node == audio_sink_id:
-                            logger.debug(f"  Found game({output_node})→sink({audio_sink_id}) link (last): {current_link}")
+                            logger.debug(f"  Found sink({audio_sink_id})→Steam link (last): {current_link} (will remove)")
                             routes_to_remove.append(current_link)
                         elif output_node in source_ids and input_node == target_node_id:
-                            logger.debug(f"  Found game({output_node})→Steam link (last): {current_link}")
+                            logger.debug(f"  Found game({output_node})→Steam link (last): {current_link} (will remove)")
                             routes_to_remove.append(current_link)
             except Exception as e:
                 logger.debug(f"Error finding links to remove: {e}")
@@ -450,6 +446,53 @@ class PipeWireController:
             # Give PipeWire a moment to settle after disconnection
             import time
             time.sleep(1.0)  # Increased from 0.5s
+            
+            # Validate source nodes before creating routes
+            # Filter out any Bluetooth devices, sinks, or invalid nodes
+            valid_source_ids = []
+            for source_id in source_ids:
+                try:
+                    result = subprocess.run(['pw-dump'], capture_output=True, text=True, timeout=2)
+                    if result.returncode == 0:
+                        data = json.loads(result.stdout)
+                        for node in data:
+                            if node.get('id') == source_id:
+                                props = node.get('info', {}).get('props', {})
+                                node_name = props.get('node.name', '').lower()
+                                device_name = props.get('device.name', '').lower()
+                                node_desc = props.get('node.description', '').lower()
+                                media_class = props.get('media.class', '')
+                                
+                                # Skip Bluetooth devices
+                                if any(bt in node_name for bt in ['bluez', 'bluetooth', 'bt_', 'hci']):
+                                    logger.warning(f"Skipping Bluetooth node {source_id}: {node_name}")
+                                    continue
+                                if any(bt in device_name for bt in ['bluez', 'bluetooth', 'bt_', 'hci']):
+                                    logger.warning(f"Skipping Bluetooth device {source_id}: {device_name}")
+                                    continue
+                                if any(bt in node_desc for bt in ['bluetooth', 'headset', 'earbuds', 'airpods']):
+                                    logger.warning(f"Skipping Bluetooth node {source_id}: {node_desc}")
+                                    continue
+                                
+                                # Skip audio sinks (output devices)
+                                if 'alsa_output' in node_name or 'Audio/Sink' in media_class:
+                                    logger.warning(f"Skipping audio sink {source_id}: {node_name}")
+                                    continue
+                                
+                                # Valid source - add to list
+                                valid_source_ids.append(source_id)
+                                logger.debug(f"Validated source {source_id}: {props.get('application.name', node_name)}")
+                                break
+                except Exception as e:
+                    logger.error(f"Error validating source {source_id}: {e}")
+            
+            if not valid_source_ids:
+                return False, "No valid audio sources to route (all sources were filtered out)"
+            
+            if len(valid_source_ids) < len(source_ids):
+                logger.warning(f"Filtered out {len(source_ids) - len(valid_source_ids)} invalid sources")
+            
+            source_ids = valid_source_ids
             
             # Now create new direct routes using port-specific connections
             connected = []
