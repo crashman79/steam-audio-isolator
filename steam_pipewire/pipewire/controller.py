@@ -524,10 +524,12 @@ class PipeWireController:
                     target_port = target_ports[i]
                     
                     logger.debug(f"    Channel {i}: {source_id}:{source_port} → {target_node_id}:{target_port}")
-                    # Create link with object.linger and link.passive to allow multiple outputs
-                    # link.passive prevents PipeWire from disconnecting existing routes
+                    # Create link with properties to allow multiple simultaneous outputs:
+                    # - object.linger: persist the link
+                    # - link.passive: don't make this link exclusive (allow game→speakers to continue)
+                    # - link.dont-remix: don't change the channel layout
                     result = _run_pw_cli_safe('create-link', source_id, source_port, target_node_id, target_port, 
-                                             '{ "object.linger": true, "link.passive": true }', timeout=5)
+                                             '{ object.linger=true link.passive=true link.dont-remix=true }', timeout=5)
                     
                     if result is None:
                         logger.error(f"      ✗ Timeout creating link for channel {i}")
