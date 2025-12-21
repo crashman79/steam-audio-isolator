@@ -524,9 +524,10 @@ class PipeWireController:
                     target_port = target_ports[i]
                     
                     logger.debug(f"    Channel {i}: {source_id}:{source_port} → {target_node_id}:{target_port}")
-                    # Create link with object.linger property to make it persist
+                    # Create link with object.linger and link.passive to allow multiple outputs
+                    # link.passive prevents PipeWire from disconnecting existing routes
                     result = _run_pw_cli_safe('create-link', source_id, source_port, target_node_id, target_port, 
-                                             '{ "object.linger": "true" }', timeout=5)
+                                             '{ "object.linger": true, "link.passive": true }', timeout=5)
                     
                     if result is None:
                         logger.error(f"      ✗ Timeout creating link for channel {i}")

@@ -399,7 +399,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Steam Audio Isolator")
+        self.setWindowTitle(f"Steam Audio Isolator v{__import__('steam_pipewire').__version__}")
         self.setGeometry(100, 100, 900, 750)
 
         self.pipewire = PipeWireController()
@@ -838,10 +838,10 @@ class MainWindow(QMainWindow):
             "applications without going through the system mixer. This provides clean, "
             "isolated game audio for your Steam recordings.</p>"
             
-            "<p style='margin-top: 20px; color: #666; font-size: 10px;'>"
-            "Version 0.1.0 | "
-            "Config: ~/.config/steam-audio-isolator/ | "
-            "Logs: ~/.cache/steam-audio-isolator.log"
+            f"<p style='margin-top: 20px; color: #666; font-size: 10px;'>"
+            f"Version {__import__('steam_pipewire').__version__} | "
+            f"Config: ~/.config/steam-audio-isolator/ | "
+            f"Logs: ~/.cache/steam-audio-isolator.log"
             "</p>"
         )
         description.setWordWrap(True)
