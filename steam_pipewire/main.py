@@ -14,13 +14,16 @@ from steam_pipewire.ui.main_window import MainWindow
 log_file = Path.home() / ".cache" / "steam-audio-isolator.log"
 log_file.parent.mkdir(parents=True, exist_ok=True)
 
+# File handler with DEBUG, console with INFO only
+file_handler = logging.FileHandler(log_file)
+file_handler.setLevel(logging.DEBUG)
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler(log_file),
-        logging.StreamHandler(sys.stdout)
-    ]
+    handlers=[file_handler, console_handler]
 )
 logger = logging.getLogger(__name__)
 
