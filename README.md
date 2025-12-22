@@ -427,3 +427,7 @@ If you find this useful:
 ---
 
 **Note**: This tool is for **Linux only** with **PipeWire**. It will not work with PulseAudio or on Windows/macOS.
+
+---
+
+<sub>Development assisted by AI tools including GitHub Copilot and Claude.</sub>
