@@ -5,9 +5,14 @@ All notable changes to Steam Audio Isolator will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.1.9] - 2025-12-21
 
 ### Added
+- Screenshots section in README with detailed visual examples:
+  - Main window with multi-channel game audio detection
+  - In-app routing diagram visualization
+  - Settings panel with icon cache management
+  - qpwgraph before/after routing comparison showing PipeWire-level audio flow
 - Persistent disk cache for application icons at `~/.cache/steam-audio-isolator/icons/`
 - Steam library cache integration for game icons with app name to app ID mapping
 - Automatic parsing of Steam app manifests from all library locations (supports multiple Steam libraries)
@@ -19,14 +24,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed diagram scrolling - routes view now has fixed size and never grows/shrinks
 - Reduced console debug output spam (DEBUG logging only in log file, INFO on console)
 - Duplicate line in icon retrieval causing potential issues
+- Fixed crash in cache clearing functionality with proper error handling
+- IndentationError in controller.py from duplicate line
 
 ### Changed
+- README clarified to consistently use "Steam Game Recording" instead of just "Steam"
+- Removed version/release notes from README header (belongs in changelog)
 - Improved performance by reducing console logging overhead
 - Increased diagram size by 30% for better visibility
 - Removed margins from diagram view to maximize available space
-- Redesigned diagram layout: Steam icon centered with sources alternating on left/right sides
+- Redesigned diagram layout: Steam Game Recording icon centered with sources alternating on left/right sides
 - Improved labels to show full descriptive names including media.name (e.g., "SCUM (audio stream #1)")
 - Enhanced icon caching: Icons now persist to disk and reload instantly on next launch
+- Settings dialog now displays cache statistics (number of icons, total size)
+- Preload icons feature shows progress dialog with error handling for individual failures
 
 ## [0.1.8] - 2025-12-21
 

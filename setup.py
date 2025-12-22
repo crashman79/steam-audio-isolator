@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='steam-audio-isolator',
-    version='0.1.8',
+    version='0.1.9',
     description='Isolate game audio for clean Steam game recording on Linux',
     long_description=open('README.md').read() if __import__('os').path.exists('README.md') else '',
     long_description_content_type='text/markdown',

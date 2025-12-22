@@ -5,8 +5,7 @@
 </p>
 
 <p align="center">
-  <strong>Isolate game audio for clean Steam game recording on Linux</strong><br>
-  <em>v0.1.5 - Release automation, changelog inclusion, GitHub Actions integration</em>
+  <strong>Isolate game audio for clean Steam Game Recording on Linux</strong>
 </p>
 
 <p align="center">
@@ -22,7 +21,7 @@
 
 ## The Problem
 
-Steam's game recording feature on Linux captures **all system audio** by default—everything playing through your speakers gets recorded:
+**Steam Game Recording** on Linux captures **all system audio** by default—everything playing through your speakers gets recorded:
 
 ❌ System notifications  
 ❌ Browser audio (YouTube, Spotify, etc.)  
@@ -33,15 +32,15 @@ This results in cluttered recordings with unwanted sounds mixing into your gamep
 
 ## The Solution
 
-**Steam Audio Isolator** creates **direct audio connections** from your game to Steam's recording input, completely bypassing the system audio mixer:
+**Steam Audio Isolator** creates **direct audio connections** from your game to Steam Game Recording's input, completely bypassing the system audio mixer:
 
 ```
 ❌ WITHOUT Steam Audio Isolator:
-   Game → Audio Sink (speakers) → Steam Recording
+   Game → Audio Sink (speakers) → Steam Game Recording
        ↳ Browser, Discord, notifications also recorded
 
 ✓ WITH Steam Audio Isolator:
-   Game → Direct Connection → Steam Recording
+   Game → Direct Connection → Steam Game Recording
    Other Audio → Speakers (not recorded)
 ```
 
@@ -81,6 +80,38 @@ This results in cluttered recordings with unwanted sounds mixing into your gamep
   - Minimize to tray vs. close behavior
 - 🎨 **Stream Purpose Detection** - Identifies main audio vs. UI sounds vs. voice chat
 - 🚀 **Auto-Apply Routing** - Automatically routes newly detected games
+
+## Screenshots
+
+<p align="center">
+  <img src="screenshots/main-window-dark.png" alt="Main Window - Dark Theme" width="800">
+  <br><em>Main window showing a game with multiple audio channels (auto-detected and selected), Vivaldi browser with video playback, and system audio sources</em>
+</p>
+
+<p align="center">
+  <img src="screenshots/in-app routing diagram.png" alt="Routing Diagram" width="800">
+  <br><em>Visual routing diagram showing direct connections from game audio channels to Steam Game Recording</em>
+</p>
+
+<p align="center">
+  <img src="screenshots/settings window.png" alt="Settings Window" width="800">
+  <br><em>Settings panel with icon cache management - preload and cache all 83 installed Steam games</em>
+</p>
+
+<details>
+<summary>Click to see routing comparison in qpwgraph</summary>
+
+<p align="center">
+  <img src="screenshots/before routing.png" alt="Before Routing" width="800">
+  <br><em>qpwgraph before routing - all audio flows through the default sink (speakers), including game audio, browser, and system sounds</em>
+</p>
+
+<p align="center">
+  <img src="screenshots/after routing.png" alt="After Routing" width="800">
+  <br><em>qpwgraph after routing - game audio has direct connections to Steam Game Recording input, bypassing the sink. Browser and system audio remain on speakers (not recorded)</em>
+</p>
+
+</details>
 
 ## Installation
 
