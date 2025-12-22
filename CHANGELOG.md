@@ -7,22 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Persistent disk cache for application icons at `~/.cache/steam-audio-isolator/icons/`
+- Steam library cache integration for game icons with app name to app ID mapping
+- Automatic parsing of Steam app manifests from all library locations (supports multiple Steam libraries)
+- Icon cache management in Settings tab with preload and clear cache buttons
+- Support for both old and new Steam icon cache formats (hash-based directories)
+
+### Fixed
+- Fixed crash on startup due to missing PyQt5 import (`QGraphicsPolygonItem` and `QPolygonF`)
+- Fixed diagram scrolling - routes view now has fixed size and never grows/shrinks
+- Reduced console debug output spam (DEBUG logging only in log file, INFO on console)
+- Duplicate line in icon retrieval causing potential issues
+
+### Changed
+- Improved performance by reducing console logging overhead
+- Increased diagram size by 30% for better visibility
+- Removed margins from diagram view to maximize available space
+- Redesigned diagram layout: Steam icon centered with sources alternating on left/right sides
+- Improved labels to show full descriptive names including media.name (e.g., "SCUM (audio stream #1)")
+- Enhanced icon caching: Icons now persist to disk and reload instantly on next launch
+
 ## [0.1.8] - 2025-12-21
 
 ### Fixed
-- **Critical fix**: Bluetooth devices no longer detected as audio sources and routed to Steam
-  - Added filtering for Bluetooth nodes during source detection (bluez, bluetooth, bt_, hci)
-  - Added validation in routing logic to reject Bluetooth devices, audio sinks, and output devices
-  - Prevents Bluetooth earbuds/headphones from being incorrectly routed to Steam recording
+- **Critical fix**: Audio output devices (speakers, Bluetooth) now shown in "System" category
+  - Bluetooth earbuds/headphones and analog speakers appear under "System Sources"
+  - System sources are NEVER auto-selected to prevent accidental routing loops
+  - Users can manually select system devices if needed (with warning tooltip)
+  - Validation warns when routing system/output devices but allows it
 - **Critical fix**: Game audio now properly continues to play through speakers when routing is applied
-  - Removed incorrect logic that was disconnecting game→sink (speakers) connections
-  - Game audio now has TWO simultaneous connections: game→speakers (for playback) AND game→Steam (for recording)
+  - Added `link.passive=true` and `link.dont-remix=true` properties to PipeWire link creation
+  - These properties allow audio to flow to multiple outputs simultaneously
+  - Game audio now correctly has TWO connections: game→speakers (playback) AND game→Steam (recording)
   - Only sink→Steam connection is removed to prevent ALL system audio from being recorded
-- Added comprehensive Bluetooth device filtering in multiple detection points
 
 ### Changed
-- Routing logic now preserves game→sink connections to maintain audio playback
-- Improved logging for filtered Bluetooth and invalid audio nodes
+- Routing logic no longer disconnects game→sink connections - uses passive links instead
+- System category now includes output devices, Bluetooth devices, and Steam internal processes
+- System sources shown with warning tooltips about potential audio loops
+
+### Added
+- Version number now displayed in About tab (removed from window title for cleaner UI)
+- Shows current version (v0.1.8) for troubleshooting
 
 ## [0.1.7] - 2025-12-20
 

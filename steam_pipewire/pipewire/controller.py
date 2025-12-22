@@ -47,7 +47,7 @@ def _get_available_ports(node_id: int, direction: str = "out") -> List[int]:
                     except (ValueError, TypeError):
                         pass
             
-            logger.debug(f"  Found {len(ports)} {direction} ports for node {node_id}: {ports}")
+                # Ports found - debug removed for brevity
             return ports
     except Exception as e:
         logger.debug(f"  Error getting ports: {e}")
@@ -178,9 +178,21 @@ class PipeWireController:
                         if node.get('type') == 'PipeWire:Interface:Node':
                             node_id = node.get('id')
                             props = node.get('info', {}).get('props', {})
+                            # Cache node info including media.name for full descriptions
+                            node_desc = props.get('node.description', '')
+                            app_name = props.get('application.name', '')
+                            media_name = props.get('media.name', '')
+                            
+                            # Build full description like source_detector does
+                            full_name = node_desc or app_name
+                            if media_name and full_name:
+                                full_name = f"{full_name} ({media_name})"
+                            
                             source_cache[node_id] = {
-                                'node.description': props.get('node.description', ''),
-                                'application.name': props.get('application.name', '')
+                                'node.description': node_desc,
+                                'application.name': app_name,
+                                'media.name': media_name,
+                                'full_name': full_name
                             }
                             source_cache_count += 1
                     logger.debug(f"  Cached {source_cache_count} nodes")
@@ -222,7 +234,9 @@ class PipeWireController:
                             # Previous link was to Steam, store it
                             links_checked += 1
                             cached = source_cache.get(output_node, {})
-                            source_name = cached.get('node.description') or \
+                            # Use full_name if available, otherwise fall back to old method
+                            source_name = cached.get('full_name') or \
+                                         cached.get('node.description') or \
                                          cached.get('application.name') or f"Node {output_node}"
                             if not source_name:
                                 source_name = f"Node {output_node}"
@@ -273,7 +287,9 @@ class PipeWireController:
                 if current_link is not None and input_node == self.steam_node_id:
                     links_checked += 1
                     cached = source_cache.get(output_node, {})
-                    source_name = cached.get('node.description') or \
+                    # Use full_name if available, otherwise fall back to old method
+                    source_name = cached.get('full_name') or \
+                                 cached.get('node.description') or \
                                  cached.get('application.name') or f"Node {output_node}"
                     if not source_name:
                         source_name = f"Node {output_node}"
@@ -463,34 +479,18 @@ class PipeWireController:
                                 node_desc = props.get('node.description', '').lower()
                                 media_class = props.get('media.class', '')
                                 
-                                # Skip Bluetooth devices
-                                if any(bt in node_name for bt in ['bluez', 'bluetooth', 'bt_', 'hci']):
-                                    logger.warning(f"Skipping Bluetooth node {source_id}: {node_name}")
-                                    continue
-                                if any(bt in device_name for bt in ['bluez', 'bluetooth', 'bt_', 'hci']):
-                                    logger.warning(f"Skipping Bluetooth device {source_id}: {device_name}")
-                                    continue
-                                if any(bt in node_desc for bt in ['bluetooth', 'headset', 'earbuds', 'airpods']):
-                                    logger.warning(f"Skipping Bluetooth node {source_id}: {node_desc}")
-                                    continue
-                                
-                                # Skip audio sinks (output devices)
-                                if 'alsa_output' in node_name or 'Audio/Sink' in media_class:
-                                    logger.warning(f"Skipping audio sink {source_id}: {node_name}")
-                                    continue
+                                # Warn about Audio/Sink (output devices) but allow routing
+                                if 'Audio/Sink' in media_class:
+                                    logger.warning(f"Routing output device {source_id} ({props.get('node.description', node_name)}) - this may cause audio loops")
                                 
                                 # Valid source - add to list
                                 valid_source_ids.append(source_id)
-                                logger.debug(f"Validated source {source_id}: {props.get('application.name', node_name)}")
                                 break
                 except Exception as e:
                     logger.error(f"Error validating source {source_id}: {e}")
             
             if not valid_source_ids:
-                return False, "No valid audio sources to route (all sources were filtered out)"
-            
-            if len(valid_source_ids) < len(source_ids):
-                logger.warning(f"Filtered out {len(source_ids) - len(valid_source_ids)} invalid sources")
+                return False, "No valid audio sources to route"
             
             source_ids = valid_source_ids
             
@@ -542,7 +542,7 @@ class PipeWireController:
                 
                 if source_connected:
                     connected.append(source_id)
-                    logger.debug(f"    ✓ Connected {source_id} ({num_ports} channels)")
+                    logger.info(f"Connected source {source_id} ({num_ports} channels)")
                 else:
                     failed.append(f"Node {source_id}: all channels failed")
             

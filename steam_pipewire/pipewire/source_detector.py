@@ -116,38 +116,31 @@ class SourceDetector:
                 props = info.get('props', {})
                 media_class = props.get('media.class', '')
 
-                # Look for stream outputs (like games, applications) that produce audio
-                # Skip inputs, sinks, system nodes, internal streams, and Steam's own node
+                # Look for stream outputs (like games, applications) and audio sinks
+                # Include: Stream/Output/Audio (apps), Audio/Source (mics), Audio/Sink (speakers/headphones)
                 if not any(cls in media_class for cls in 
-                          ['Stream/Output/Audio', 'Audio/Source']):
+                          ['Stream/Output/Audio', 'Audio/Source', 'Audio/Sink']):
                     continue
                 
                 # Skip internal/monitoring streams explicitly
                 if 'Internal' in media_class or 'Stream/Input' in media_class:
                     continue
                 
-                # Skip system echo-cancel and internal nodes
+                # Skip system echo-cancel, dummy, and internal nodes
                 node_name = props.get('node.name', '').lower()
-                if any(x in node_name for x in ['echo-cancel', 'dummy', 'freewheel']):
-                    continue
-                
-                # Skip Bluetooth devices and other audio sinks/outputs
-                # These are audio output devices, not sources that should be routed to Steam
-                device_name = props.get('device.name', '').lower()
                 node_description = props.get('node.description', '').lower()
-                if any(x in node_name for x in ['bluez', 'bluetooth', 'bt_', 'hci']):
-                    logger.debug(f"Skipping Bluetooth node: {node_name}")
-                    continue
-                if any(x in device_name for x in ['bluez', 'bluetooth', 'bt_', 'hci']):
-                    logger.debug(f"Skipping Bluetooth device: {device_name}")
-                    continue
-                if any(x in node_description for x in ['bluetooth', 'headset', 'earbuds', 'airpods']):
-                    logger.debug(f"Skipping Bluetooth description: {node_description}")
+                
+                # Skip monitor nodes (passive observers of audio streams)
+                if 'monitor' in node_name or 'monitor' in node_description:
+                    logger.debug(f"Skipping monitor node: {node_name} / {node_description}")
                     continue
                 
-                # Skip ALSA/PulseAudio loopback and monitor sources
-                if any(x in node_name for x in ['alsa_input', 'alsa_output', 'monitor', 'loopback']):
-                    logger.debug(f"Skipping ALSA/monitor node: {node_name}")
+                # Skip other internal nodes
+                if any(x in node_name for x in ['echo-cancel', 'dummy', 'freewheel', 'loopback']):
+                    continue
+                
+                # Skip ALSA input devices (microphones already covered by Audio/Source)
+                if 'alsa_input' in node_name:
                     continue
                 
                 # Skip Steam's own recording node
@@ -158,13 +151,31 @@ class SourceDetector:
                 source_type = self._determine_source_type(props)
                 description = props.get('node.description') or props.get('application.name') or node_name
                 
+                # Enhance description for System devices (output devices) to show function
+                if source_type == 'System' and 'Audio/Sink' in media_class:
+                    # This is an output device (speakers, headphones)
+                    if 'bluez' in node_name or 'bluetooth' in node_name.lower():
+                        # Bluetooth device - differentiate profiles
+                        if 'headset' in node_name.lower() or 'hsp' in node_name.lower() or 'hfp' in node_name.lower():
+                            description += " [BT Headset - voice/mic]"
+                        else:
+                            description += " [BT Audio]"
+                    elif 'hdmi' in node_name.lower():
+                        description += " [HDMI Output]"
+                    elif 'analog' in node_name.lower():
+                        description += " [Speakers]"
+                    else:
+                        description += " [Output Device]"
+                
                 # Include media.name to distinguish multiple streams from same app
                 media_name = props.get('media.name', '')
                 stream_purpose = ''
                 if media_name:
                     # Guess the purpose of this stream based on its properties
                     stream_purpose = self._guess_stream_purpose(props, 0)
-                    description = f"{description} ({media_name})"
+                    # Only append media_name if we haven't already added a clarifying label
+                    if not (source_type == 'System' and 'Audio/Sink' in media_class):
+                        description = f"{description} ({media_name})"
                 
                 source = {
                     'id': node.get('id'),
@@ -186,7 +197,13 @@ class SourceDetector:
         app_name = props.get('application.name', '').lower()
         app_binary = props.get('application.process.binary', '').lower()
         node_name = props.get('node.name', '').lower()
+        media_class = props.get('media.class', '')
         app_id = props.get('application.process.id', '')
+        
+        # Check if this is an Audio/Sink (output device like speakers, headphones)
+        # These are categorized as System since they're infrastructure, not app sources
+        if 'Audio/Sink' in media_class:
+            return 'System'
         
         # Check for Steam game indicators (expanded detection)
         # 1. Wine/Proton executables
