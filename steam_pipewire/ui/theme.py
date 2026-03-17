@@ -184,6 +184,13 @@ class ThemeManager:
             QScrollBar::handle:vertical:hover {{
                 background-color: {colors['selection_color']};
             }}
+            QToolTip {{
+                background-color: {colors['alt_bg_color']};
+                color: {colors['text_color']};
+                border: 1px solid {colors['border_color']};
+                padding: 6px 8px;
+                max-width: 320px;
+            }}
         """
     
     @staticmethod

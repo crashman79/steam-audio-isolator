@@ -10,7 +10,7 @@ from PyQt5.QtWidgets import (
     QGraphicsPathItem, QGraphicsPixmapItem, QGraphicsEllipseItem, QGraphicsPolygonItem, QApplication
 )
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QVariant, QTimer, QPointF, QRectF, QSize, QMimeData
-from PyQt5.QtGui import QColor, QFont, QKeySequence, QIcon, QPixmap, QPainter, QPen, QBrush, QPainterPath, QPolygonF
+from PyQt5.QtGui import QColor, QFont, QKeySequence, QIcon, QPixmap, QPainter, QPen, QBrush, QPainterPath, QPolygonF, QGuiApplication
 from pathlib import Path
 import os
 from steam_pipewire.pipewire.source_detector import SourceDetector
@@ -277,6 +277,37 @@ class RouteRefreshThread(QThread):
             self.error_occurred.emit(str(e))
 
 
+class UpdateCheckThread(QThread):
+    """Worker thread for update check"""
+    result = pyqtSignal(bool, str, object, object)  # success, message, latest_tag, download_url
+
+    def run(self):
+        try:
+            from steam_pipewire.utils import updater
+            from steam_pipewire import __version__
+            r = updater.check_for_updates(__version__)
+            self.result.emit(*r)
+        except Exception as e:
+            self.result.emit(False, str(e), None, None)
+
+
+class DownloadUpdateThread(QThread):
+    """Worker thread for downloading update binary"""
+    result = pyqtSignal(bool, str)
+
+    def __init__(self, download_url: str):
+        super().__init__()
+        self.download_url = download_url
+
+    def run(self):
+        try:
+            from steam_pipewire.utils import updater
+            r = updater.download_update(self.download_url)
+            self.result.emit(*r)
+        except Exception as e:
+            self.result.emit(False, str(e))
+
+
 class SettingsDialog(QWidget):
     """Settings/Preferences dialog"""
     settings_changed = pyqtSignal(dict)
@@ -286,6 +317,9 @@ class SettingsDialog(QWidget):
         self.config = config
         self._exec_path = exec_path or ""
         self.settings = config.load_settings()
+        # Sync menu/autostart from actual files so UI reflects reality
+        self.settings['add_to_app_menu'] = config.is_desktop_entry_enabled()
+        self.settings['start_at_login'] = config.is_autostart_enabled()
         self.init_ui()
     
     def init_ui(self):
@@ -379,12 +413,12 @@ class SettingsDialog(QWidget):
         self.start_at_login_checkbox.setChecked(self.settings.get('start_at_login', False))
         self.start_at_login_checkbox.stateChanged.connect(self._on_settings_changed)
         tray_layout.addWidget(self.start_at_login_checkbox)
-        tray_layout.addWidget(QLabel("When enabled, the app is launched automatically at session login."))
+        tray_layout.addWidget(QLabel("When enabled, creates ~/.config/autostart/steam-audio-isolator.desktop. Click Save to apply."))
         self.add_to_app_menu_checkbox = QCheckBox("Add to application menu")
         self.add_to_app_menu_checkbox.setChecked(self.settings.get('add_to_app_menu', False))
         self.add_to_app_menu_checkbox.stateChanged.connect(self._on_settings_changed)
         tray_layout.addWidget(self.add_to_app_menu_checkbox)
-        tray_layout.addWidget(QLabel("When enabled, copies the app to ~/.local/bin and adds a launcher to your application menu."))
+        tray_layout.addWidget(QLabel("When enabled, creates ~/.local/share/applications/steam-audio-isolator.desktop (and copies binary to ~/.local/bin if needed). Click Save to apply."))
         copy_bin_btn = QPushButton("Copy to ~/.local/bin")
         copy_bin_btn.setToolTip("Install the binary to a PATH-friendly location (standalone binary only)")
         copy_bin_btn.clicked.connect(self._on_copy_to_local_bin)
@@ -458,16 +492,28 @@ class SettingsDialog(QWidget):
         self.settings['theme'] = theme_map.get(self.theme_combo.currentIndex(), 'system')
         
         self.config.save_settings(self.settings)
-        if self.settings['start_at_login'] and self._exec_path:
-            self.config.enable_autostart(self._exec_path)
+        errors = []
+        if self.settings['start_at_login']:
+            ok, msg = self.config.enable_autostart(self._exec_path)
+            if not ok:
+                errors.append(f"Start at login: {msg}")
         else:
             self.config.disable_autostart()
-        if self.settings['add_to_app_menu'] and self._exec_path:
-            self.config.enable_desktop_entry(self._exec_path)
+        if self.settings['add_to_app_menu']:
+            ok, msg = self.config.enable_desktop_entry(self._exec_path)
+            if not ok:
+                errors.append(f"Application menu: {msg}")
         else:
             self.config.disable_desktop_entry()
         self.settings_changed.emit(self.settings)
-        
+        if errors:
+            QMessageBox.warning(
+                self,
+                "Settings saved with errors",
+                "Settings saved, but some options could not be applied:\n\n" + "\n".join(errors)
+            )
+        else:
+            QMessageBox.information(self, "Settings saved", "Settings saved successfully.")
         # Apply theme immediately
         theme_str = self.settings['theme'].upper()
         theme = Theme[theme_str] if theme_str in Theme.__members__ else Theme.SYSTEM
@@ -793,8 +839,19 @@ class MainWindow(QMainWindow):
         self.tray_icon.setContextMenu(tray_menu)
         self.tray_icon.activated.connect(self.tray_icon_activated)
         self.tray_icon.show()
-        
+
         logger.debug("System tray icon initialized")
+
+    def show_tray_launch_notification(self):
+        """Show a short tray popup so the user notices the app is running in the tray."""
+        if not self.tray_icon or not self.tray_icon.isVisible():
+            return
+        self.tray_icon.showMessage(
+            "Steam Audio Isolator",
+            "Running in the system tray. Click the tray icon to open, or right-click for menu.",
+            QSystemTrayIcon.Information,
+            4000
+        )
     
     def create_app_icon(self):
         """Create a custom colored icon to distinguish from system audio"""
@@ -857,8 +914,10 @@ class MainWindow(QMainWindow):
     def show_from_tray(self):
         """Show window from system tray"""
         self.show()
-        self.activateWindow()
-        self.raise_()
+        # Wayland does not support requestActivate(); skip to avoid qt.qpa.wayland warning
+        if QGuiApplication.platformName() != "wayland":
+            self.activateWindow()
+            self.raise_()
 
     def show_settings_from_tray(self):
         """Show window and switch to Settings tab (from tray)."""
@@ -1079,6 +1138,79 @@ class MainWindow(QMainWindow):
         subtitle.setStyleSheet("color: #666; font-size: 12px; margin-bottom: 10px;")
         layout.addWidget(subtitle)
         
+        # Updates (only when running as built binary)
+        try:
+            from steam_pipewire.utils import updater
+            if updater.is_frozen():
+                update_group = QGroupBox("Updates")
+                update_layout = QVBoxLayout()
+                update_status = QLabel("Click Check for updates to see if a new version is available.")
+                update_status.setWordWrap(True)
+                update_layout.addWidget(update_status)
+                btn_row = QHBoxLayout()
+                check_btn = QPushButton("Check for updates")
+                download_btn = QPushButton("Download update")
+                download_btn.setEnabled(False)
+                restart_btn = QPushButton("Restart to apply update")
+                restart_btn.setEnabled(updater.has_pending_update())
+                btn_row.addWidget(check_btn)
+                btn_row.addWidget(download_btn)
+                btn_row.addWidget(restart_btn)
+                btn_row.addStretch()
+                update_layout.addLayout(btn_row)
+                update_group.setLayout(update_layout)
+                layout.addWidget(update_group)
+                widget.update_status_label = update_status
+                widget.update_download_btn = download_btn
+                widget.update_restart_btn = restart_btn
+                widget.update_download_url = None
+                check_thread = [None]
+                download_thread = [None]
+
+                def on_check_result(success, message, latest_tag, download_url):
+                    update_status.setText(message)
+                    widget.update_download_url = download_url
+                    download_btn.setEnabled(bool(download_url))
+
+                def on_check_clicked():
+                    check_btn.setEnabled(False)
+                    update_status.setText("Checking...")
+                    t = UpdateCheckThread()
+                    check_thread[0] = t
+                    t.result.connect(on_check_result)
+                    t.finished.connect(lambda: check_btn.setEnabled(True))
+                    t.start()
+
+                def on_download_result(success, message):
+                    update_status.setText(message)
+                    if success:
+                        download_btn.setEnabled(False)
+                        restart_btn.setEnabled(updater.has_pending_update())
+
+                def on_download_clicked():
+                    url = getattr(widget, "update_download_url", None)
+                    if not url:
+                        return
+                    download_btn.setEnabled(False)
+                    update_status.setText("Downloading...")
+                    t = DownloadUpdateThread(url)
+                    download_thread[0] = t
+                    t.result.connect(on_download_result)
+                    t.finished.connect(lambda: download_btn.setEnabled(bool(widget.update_download_url)))
+                    t.start()
+
+                def on_restart_clicked():
+                    if updater.restart_to_apply():
+                        QApplication.instance().quit()
+                    else:
+                        update_status.setText("Restart failed. Try closing and running the app again.")
+
+                check_btn.clicked.connect(on_check_clicked)
+                download_btn.clicked.connect(on_download_clicked)
+                restart_btn.clicked.connect(on_restart_clicked)
+        except Exception:
+            pass
+
         # Main description
         description = QLabel(
             "<h3>What This App Does</h3>"
@@ -1384,21 +1516,17 @@ class MainWindow(QMainWindow):
         
         # If trying to close via window X button and tray is enabled, minimize instead
         if not self.is_closing and minimize_to_tray and self.tray_icon and self.tray_icon.isVisible():
-            # Minimizing to tray - show what will happen on actual quit
+            # Minimizing to tray — show popup so user sees it's in the tray
             logger.debug("Minimizing to system tray")
             self.hide()
             event.ignore()
-            
-            # Show notification explaining the behavior
-            if not hasattr(self, '_tray_notified'):
-                restore_msg = "Routes will be restored to default when you quit." if restore_on_close else "Current routes will be kept when you quit."
-                self.tray_icon.showMessage(
-                    "Steam Audio Isolator",
-                    f"Application minimized to system tray.\n{restore_msg}\nRight-click tray icon to quit.",
-                    QSystemTrayIcon.Information,
-                    3000
-                )
-                self._tray_notified = True
+            restore_msg = "Routes will be restored to default when you quit." if restore_on_close else "Current routes will be kept when you quit."
+            self.tray_icon.showMessage(
+                "Steam Audio Isolator",
+                f"Minimized to system tray.\n{restore_msg}\nClick tray icon to open; right-click to quit.",
+                QSystemTrayIcon.Information,
+                4000
+            )
             return
         
         # Actually closing the application - show confirmation if enabled

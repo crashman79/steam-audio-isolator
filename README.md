@@ -167,7 +167,7 @@ which pw-dump pw-cli
 4. See your selection highlighted in the list
 
 ### Step 3: Apply Routing
-1. Click **"✓ Apply Routing"** button
+1. Click **Apply Routing**
 2. Watch the **Current Routes** tab update in real-time
 3. You'll see the routes visualization diagram show your connections
 
@@ -177,7 +177,7 @@ which pw-dump pw-cli
 3. Verify in the **Current Routes** tab that connections are active
 
 ### Step 5: When Done
-- Click **"✕ Clear All Routes"** to disconnect
+- Click **Clear All Routes** to disconnect
 - App restores default routing (if "Restore default on close" is enabled)
 
 ---
@@ -187,9 +187,7 @@ which pw-dump pw-cli
 ### Audio Routing Tab
 - **Source List**: Displays all detected audio sources grouped by type (Game, Browser, System, Communication, Application)
 - **Checkboxes**: Select which sources to route to Steam
-- **Buttons**: 
-  - "✓ Apply Routing" - Create selected routes
-  - "✕ Clear All Routes" - Disconnect all routes
+- **Buttons**: **Apply Routing** (create selected routes), **Clear All Routes** (disconnect all)
 - **Auto-select**: Games are automatically selected when detected
 - **Status**: Shows total sources found and current selection
 
@@ -209,8 +207,16 @@ which pw-dump pw-cli
 
 ### Settings Tab
 - **Restore default on close**: When enabled, disconnects game routes and reconnects audio sink on exit
+- **Show confirmation when closing**: Prompt before quitting
 - **Auto-detect interval**: How often (in seconds) to check for new audio sources
-- **Minimize to tray**: Controls minimize behavior
+- **Automatically apply routing when new games are detected**: Optional auto-apply
+- **Minimize to tray**: Close button hides to tray instead of quitting
+- **Start minimized to tray**: App starts with only the tray icon visible
+- **Start when I log in**: App writes `~/.config/autostart/` desktop entry (uses binary in `~/.local/bin` when possible)
+- **Add to application menu**: App writes `~/.local/share/applications/` desktop entry (copies binary to `~/.local/bin` when enabling)
+- **Copy to ~/.local/bin**: One-click install of the binary to a PATH-friendly location (standalone binary only). On first run from elsewhere, the app can prompt to do this once.
+- **Theme**: Light, dark, or system
+- **Icon cache**: Preload or clear cached game/app icons
 
 ### Profiles Tab
 - **Save Profile**: Create a named profile with your current routing selection
@@ -285,13 +291,23 @@ pw-cli list-objects Link             # View active connections
 ### Configuration Storage
 ```
 ~/.config/steam-audio-isolator/
-├── settings.json                    # Application settings
+├── settings.json                    # Application settings (theme, tray, autostart, etc.)
 └── profiles/
     ├── game-only.pwp               # Saved routing profiles
-    ├── game-discord.pwp
     └── ...
 
-~/.cache/steam-audio-isolator.log   # Debug logs
+~/.config/autostart/
+└── steam-audio-isolator.desktop    # Present if "Start when I log in" is enabled
+
+~/.local/share/applications/
+└── steam-audio-isolator.desktop    # Present if "Add to application menu" is enabled
+
+~/.local/bin/
+└── steam-audio-isolator            # Optional: copy created when enabling menu/autostart or via Settings
+
+~/.cache/steam-audio-isolator/
+├── icons/                          # Cached app/game icons
+└── (log in parent .cache) steam-audio-isolator.log
 ```
 
 ---
@@ -359,6 +375,8 @@ steam_pipewire/
 
 ## Version History
 
+**v0.2.0** (2025-03-17) — Standalone binary, app-managed config/menu/autostart, Copy to ~/.local/bin, first-run install prompt. See [CHANGELOG.md](CHANGELOG.md).
+
 **v0.1.3** (2025-12-18)
 - Added routes visualization diagram in Current Routes tab
 - Fixed unnecessary scrollbar in routes display
@@ -409,5 +427,3 @@ If you find this useful:
 **Note**: This tool is for **Linux only** with **PipeWire**. It will not work with PulseAudio or on Windows/macOS.
 
 ---
-
-<sub>Development assisted by AI tools including GitHub Copilot and Claude.</sub>
