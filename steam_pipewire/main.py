@@ -5,23 +5,6 @@ import sys
 import os
 from pathlib import Path
 
-# --- Replace-and-run: when the new binary is started with --replace-and-run <old_path>, overwrite old with self and re-exec ---
-if getattr(sys, "frozen", False) and "--replace-and-run" in sys.argv:
-    argv = list(sys.argv)
-    try:
-        i = argv.index("--replace-and-run")
-        target = Path(argv[i + 1]).resolve()
-        with open(sys.executable, "rb") as f:
-            data = f.read()
-        with open(target, "wb") as f:
-            f.write(data)
-        target.chmod(0o755)
-        new_argv = [str(target)] + [a for j, a in enumerate(argv) if j not in (i, i + 1)]
-        os.execv(str(target), new_argv)
-    except Exception:
-        pass
-    sys.exit(0)
-
 # --- Stale update cleanup: when running as built binary (and not from .new), remove leftover .new file ---
 if getattr(sys, "frozen", False):
     new_path = Path.home() / ".cache" / "steam-audio-isolator" / "steam-audio-isolator.new"

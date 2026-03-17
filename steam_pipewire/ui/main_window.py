@@ -511,6 +511,7 @@ class SettingsDialog(QWidget):
         else:
             self.config.disable_autostart()
         if self.settings['add_to_app_menu']:
+            self._install_app_icon_to_hicolor()
             ok, msg = self.config.enable_desktop_entry(self._exec_path)
             if not ok:
                 errors.append(f"Application menu: {msg}")
@@ -864,54 +865,70 @@ class MainWindow(QMainWindow):
             4000
         )
     
-    def create_app_icon(self):
+    def create_app_icon(self, size=64):
         """Create app icon: rounded square with source -> direct path -> target (distinct from Steam/generic audio)."""
         from PyQt5.QtGui import QLinearGradient, QPen, QBrush, QPolygon, QPainterPath
         from PyQt5.QtCore import QPoint, QRectF
-
-        size = 64
+        scale = size / 64.0
         pixmap = QPixmap(size, size)
         pixmap.fill(Qt.transparent)
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.Antialiasing)
 
-        margin = 4
+        margin = 4 * scale
         rect = QRectF(margin, margin, size - 2 * margin, size - 2 * margin)
         gradient = QLinearGradient(0, 0, size, size)
         gradient.setColorAt(0, QColor(0, 175, 175))
         gradient.setColorAt(1, QColor(0, 115, 155))
         painter.setBrush(QBrush(gradient))
-        painter.setPen(QPen(QColor(0, 95, 125), 2))
-        painter.drawRoundedRect(rect, 12, 12)
+        painter.setPen(QPen(QColor(0, 95, 125), max(1, int(2 * scale))))
+        painter.drawRoundedRect(rect, 12 * scale, 12 * scale)
 
-        sx, sy = 14, 36
+        sx, sy = 14 * scale, 36 * scale
         speaker_points = [
-            QPoint(sx, sy + 10),
-            QPoint(sx + 12, sy + 6),
-            QPoint(sx + 12, sy + 18),
-            QPoint(sx, sy + 14),
+            QPoint(int(sx), int(sy + 10 * scale)),
+            QPoint(int(sx + 12 * scale), int(sy + 6 * scale)),
+            QPoint(int(sx + 12 * scale), int(sy + 18 * scale)),
+            QPoint(int(sx), int(sy + 14 * scale)),
         ]
         painter.setBrush(QBrush(QColor(255, 255, 255, 230)))
-        painter.setPen(QPen(QColor(0, 90, 120), 1))
+        painter.setPen(QPen(QColor(0, 90, 120), max(1, int(1.2 * scale))))
         painter.drawPolygon(QPolygon(speaker_points))
-        painter.drawRect(sx - 4, sy + 8, 4, 6)
+        painter.drawRect(int(sx - 4 * scale), int(sy + 8 * scale), int(4 * scale), int(6 * scale))
 
         path = QPainterPath()
-        path.moveTo(sx + 14, sy + 12)
-        path.cubicTo(size * 0.5, size * 0.35, size * 0.65, size * 0.25, size - 14, 14)
+        path.moveTo(sx + 14 * scale, sy + 12 * scale)
+        path.cubicTo(size * 0.5, size * 0.35, size * 0.65, size * 0.25, size - 14 * scale, 14 * scale)
         painter.setBrush(Qt.NoBrush)
-        painter.setPen(QPen(QColor(255, 255, 255), 3))
+        painter.setPen(QPen(QColor(255, 255, 255), max(2, int(3 * scale))))
         painter.drawPath(path)
 
-        cx, cy = size - 14, 14
-        r = 5
+        cx, cy = size - 14 * scale, 14 * scale
+        r = 5 * scale
         painter.setBrush(QBrush(QColor(255, 255, 255)))
-        painter.setPen(QPen(QColor(0, 90, 120), 1))
+        painter.setPen(QPen(QColor(0, 90, 120), max(1, int(1.2 * scale))))
         painter.drawEllipse(QRectF(cx - r, cy - r, 2 * r, 2 * r))
 
         painter.end()
         return QIcon(pixmap)
-    
+
+    def _install_app_icon_to_hicolor(self):
+        """Install app icon to ~/.local/share/icons/hicolor so desktop entry Icon=steam-audio-isolator resolves."""
+        import logging
+        from pathlib import Path
+        logger = logging.getLogger(__name__)
+        base = Path.home() / '.local' / 'share' / 'icons' / 'hicolor'
+        name = 'steam-audio-isolator.png'
+        for s in (48, 64, 128, 256):
+            dir_path = base / f'{s}x{s}' / 'apps'
+            dir_path.mkdir(parents=True, exist_ok=True)
+            path = dir_path / name
+            pixmap = self.create_app_icon(size=s).pixmap(s, s)
+            if not pixmap.isNull() and pixmap.save(str(path), 'PNG'):
+                logger.debug(f"Installed icon to {path}")
+            else:
+                logger.warning(f"Failed to save icon to {path}")
+
     def _update_graphics_view_theme(self):
         """Update graphics view background color based on current theme"""
         theme_str = self.settings.get('theme', 'system').upper()
@@ -1214,10 +1231,9 @@ class MainWindow(QMainWindow):
                     t.start()
 
                 def on_restart_clicked():
-                    if updater.restart_to_apply():
-                        QApplication.instance().quit()
-                    else:
-                        update_status.setText("Restart failed. Try closing and running the app again.")
+                    ok, msg = updater.restart_to_apply()
+                    if not ok:
+                        update_status.setText(msg or "Restart failed. Try closing and running the app again.")
 
                 check_btn.clicked.connect(on_check_clicked)
                 download_btn.clicked.connect(on_download_clicked)
