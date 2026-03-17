@@ -281,9 +281,10 @@ class SettingsDialog(QWidget):
     """Settings/Preferences dialog"""
     settings_changed = pyqtSignal(dict)
     
-    def __init__(self, config: 'ConfigManager', parent=None):
+    def __init__(self, config: 'ConfigManager', parent=None, exec_path=None):
         super().__init__(parent)
         self.config = config
+        self._exec_path = exec_path or ""
         self.settings = config.load_settings()
         self.init_ui()
     
@@ -369,6 +370,28 @@ class SettingsDialog(QWidget):
             "When enabled, closing the window will minimize to tray.\n"
             "Use the tray menu to quit completely."
         ))
+        self.start_minimized_checkbox = QCheckBox("Start minimized to tray")
+        self.start_minimized_checkbox.setChecked(self.settings.get('start_minimized_to_tray', False))
+        self.start_minimized_checkbox.stateChanged.connect(self._on_settings_changed)
+        tray_layout.addWidget(self.start_minimized_checkbox)
+        tray_layout.addWidget(QLabel("When enabled, the app will start with only the tray icon visible."))
+        self.start_at_login_checkbox = QCheckBox("Start Steam Audio Isolator when I log in")
+        self.start_at_login_checkbox.setChecked(self.settings.get('start_at_login', False))
+        self.start_at_login_checkbox.stateChanged.connect(self._on_settings_changed)
+        tray_layout.addWidget(self.start_at_login_checkbox)
+        tray_layout.addWidget(QLabel("When enabled, the app is launched automatically at session login."))
+        self.add_to_app_menu_checkbox = QCheckBox("Add to application menu")
+        self.add_to_app_menu_checkbox.setChecked(self.settings.get('add_to_app_menu', False))
+        self.add_to_app_menu_checkbox.stateChanged.connect(self._on_settings_changed)
+        tray_layout.addWidget(self.add_to_app_menu_checkbox)
+        tray_layout.addWidget(QLabel("When enabled, copies the app to ~/.local/bin and adds a launcher to your application menu."))
+        copy_bin_btn = QPushButton("Copy to ~/.local/bin")
+        copy_bin_btn.setToolTip("Install the binary to a PATH-friendly location (standalone binary only)")
+        copy_bin_btn.clicked.connect(self._on_copy_to_local_bin)
+        tray_layout.addWidget(copy_bin_btn)
+        self.copy_bin_status = QLabel("")
+        self.copy_bin_status.setStyleSheet("color: #666; font-size: 10px;")
+        tray_layout.addWidget(self.copy_bin_status)
         tray_group.setLayout(tray_layout)
         layout.addWidget(tray_group)
         
@@ -429,9 +452,20 @@ class SettingsDialog(QWidget):
         self.settings['auto_detect_interval'] = self.interval_spinbox.value()
         self.settings['auto_apply_games'] = self.auto_apply_checkbox.isChecked()
         self.settings['minimize_to_tray'] = self.tray_checkbox.isChecked()
+        self.settings['start_minimized_to_tray'] = self.start_minimized_checkbox.isChecked()
+        self.settings['start_at_login'] = self.start_at_login_checkbox.isChecked()
+        self.settings['add_to_app_menu'] = self.add_to_app_menu_checkbox.isChecked()
         self.settings['theme'] = theme_map.get(self.theme_combo.currentIndex(), 'system')
         
         self.config.save_settings(self.settings)
+        if self.settings['start_at_login'] and self._exec_path:
+            self.config.enable_autostart(self._exec_path)
+        else:
+            self.config.disable_autostart()
+        if self.settings['add_to_app_menu'] and self._exec_path:
+            self.config.enable_desktop_entry(self._exec_path)
+        else:
+            self.config.disable_desktop_entry()
         self.settings_changed.emit(self.settings)
         
         # Apply theme immediately
@@ -464,6 +498,15 @@ class SettingsDialog(QWidget):
             f"Cache: {len(cached_files)} icon(s) cached, {size_str} total"
         )
     
+    def _on_copy_to_local_bin(self):
+        """Copy the running binary to ~/.local/bin (standalone binary only)."""
+        ok, msg = self.config.install_to_local_bin()
+        self.copy_bin_status.setText(msg if ok else f"Not installed: {msg}")
+        if ok:
+            QMessageBox.information(self, "Installed", f"{msg}\n\nYou can run the app with: steam-audio-isolator")
+        else:
+            QMessageBox.warning(self, "Copy to ~/.local/bin", msg)
+
     def _preload_icons(self):
         """Preload all Steam game icons"""
         from PyQt5.QtWidgets import QProgressDialog, QMessageBox
@@ -518,7 +561,7 @@ class SettingsDialog(QWidget):
             
             self._update_cache_status()
             self.cache_status_label.setText(
-                f"✓ Cached {cached_count} of {app_count} game icon(s). "
+                f"Cached {cached_count} of {app_count} game icon(s). "
                 f"{self.cache_status_label.text()}"
             )
             
@@ -570,7 +613,7 @@ class SettingsDialog(QWidget):
                         logger.warning(f"Failed to delete {cache_file}: {e}")
             
             self._update_cache_status()
-            self.cache_status_label.setText(f"✓ Cleared {deleted_count} cached icon(s).")
+            self.cache_status_label.setText(f"Cleared {deleted_count} cached icon(s).")
             logger.info(f"Icon cache cleared: {deleted_count} files deleted")
             
         except Exception as e:
@@ -592,8 +635,9 @@ class SettingsDialog(QWidget):
 class MainWindow(QMainWindow):
     """Main application window"""
 
-    def __init__(self):
+    def __init__(self, exec_path=None):
         super().__init__()
+        self._exec_path = exec_path or ""
         self.setWindowTitle("Steam Audio Isolator")
         self.setGeometry(100, 100, 900, 750)
 
@@ -650,9 +694,9 @@ class MainWindow(QMainWindow):
         minimize_to_tray = self.settings.get('minimize_to_tray', True)
         
         if minimize_to_tray:
-            info_text = "ℹ Minimize to tray enabled. " + ("Quitting will restore default routing" if restore_on_close else "Quitting will keep current routing")
+            info_text = "Minimize to tray enabled. " + ("Quitting will restore default routing" if restore_on_close else "Quitting will keep current routing")
         else:
-            info_text = "ℹ Closing will restore default routing" if restore_on_close else "ℹ Closing will keep current routing"
+            info_text = "Closing will restore default routing" if restore_on_close else "Closing will keep current routing"
         
         self.info_note = QLabel(info_text)
         self.info_note.setStyleSheet("color: #1976d2; font-size: 10px; padding: 5px;")
@@ -667,34 +711,34 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(self.status_label)
 
         # Create tabs for different views
-        tabs = QTabWidget()
+        self.tab_widget = QTabWidget()
         
         # Routing tab
         routing_tab = self.create_routing_tab()
-        tabs.addTab(routing_tab, "Audio Routing")
+        self.tab_widget.addTab(routing_tab, "Audio Routing")
         
         # Current routes tab
         routes_tab = self.create_routes_tab()
-        tabs.addTab(routes_tab, "Current Routes")
+        self.tab_widget.addTab(routes_tab, "Current Routes")
         
         # Info tab
         info_tab = self.create_info_tab()
-        tabs.addTab(info_tab, "System Info")
+        self.tab_widget.addTab(info_tab, "System Info")
         
         # Settings tab
-        settings_tab = SettingsDialog(self.config)
-        settings_tab.settings_changed.connect(self.on_settings_changed)
-        tabs.addTab(settings_tab, "⚙ Settings")
+        self.settings_tab = SettingsDialog(self.config, exec_path=self._exec_path)
+        self.settings_tab.settings_changed.connect(self.on_settings_changed)
+        self.tab_widget.addTab(self.settings_tab, "Settings")
         
         # Profiles tab
         profiles_tab = self.create_profiles_tab()
-        tabs.addTab(profiles_tab, "💾 Profiles")
+        self.tab_widget.addTab(profiles_tab, "Profiles")
         
         # About tab
         about_tab = self.create_about_tab()
-        tabs.addTab(about_tab, "ℹ About")
+        self.tab_widget.addTab(about_tab, "About")
         
-        main_layout.addWidget(tabs)
+        main_layout.addWidget(self.tab_widget)
         central_widget.setLayout(main_layout)
 
     def setup_system_tray(self):
@@ -721,6 +765,10 @@ class MainWindow(QMainWindow):
         show_action = QAction("Show Window", self)
         show_action.triggered.connect(self.show_from_tray)
         tray_menu.addAction(show_action)
+        
+        settings_action = QAction("Settings…", self)
+        settings_action.triggered.connect(self.show_settings_from_tray)
+        tray_menu.addAction(settings_action)
         
         tray_menu.addSeparator()
         
@@ -811,7 +859,12 @@ class MainWindow(QMainWindow):
         self.show()
         self.activateWindow()
         self.raise_()
-    
+
+    def show_settings_from_tray(self):
+        """Show window and switch to Settings tab (from tray)."""
+        self.show_from_tray()
+        self.tab_widget.setCurrentWidget(self.settings_tab)
+
     def toggle_visibility(self):
         """Toggle window visibility"""
         if self.isVisible():
@@ -830,6 +883,33 @@ class MainWindow(QMainWindow):
         
         # closeEvent will handle the confirmation and cleanup
         self.close()
+
+    def maybe_prompt_install_once(self):
+        """One-time prompt to install binary to ~/.local/bin when not already there."""
+        if not self.config.is_frozen():
+            return
+        if self.config.get_setting('install_prompt_shown'):
+            return
+        if self.config.is_running_from_local_bin():
+            return
+        reply = QMessageBox.question(
+            self,
+            "Install to ~/.local/bin?",
+            "Install Steam Audio Isolator to ~/.local/bin for easy access and reliable application menu/autostart?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        self.config.set_setting('install_prompt_shown', True)
+        if reply == QMessageBox.Yes:
+            ok, msg = self.config.install_to_local_bin()
+            if ok:
+                QMessageBox.information(
+                    self,
+                    "Installed",
+                    f"{msg}\n\nYou can run the app with: steam-audio-isolator\nAdd to application menu in Settings if desired."
+                )
+            else:
+                QMessageBox.warning(self, "Install", msg)
 
     def create_routing_tab(self) -> QWidget:
         """Create the audio routing configuration tab"""
@@ -861,13 +941,13 @@ class MainWindow(QMainWindow):
 
         button_layout.addStretch()
 
-        apply_btn = QPushButton("✓ Apply Routing")
+        apply_btn = QPushButton("Apply Routing")
         apply_btn.clicked.connect(self.apply_routing)
         apply_btn.setStyleSheet("background-color: #4CAF50; color: white; padding: 5px; font-weight: bold;")
         apply_btn.setToolTip("Click to create audio connections for checked sources.\nThis is a manual action - routing is NOT automatic.")
         button_layout.addWidget(apply_btn)
 
-        clear_btn = QPushButton("✕ Clear All Routes")
+        clear_btn = QPushButton("Clear All Routes")
         clear_btn.clicked.connect(self.clear_all_routes)
         button_layout.addWidget(clear_btn)
 
@@ -937,7 +1017,7 @@ class MainWindow(QMainWindow):
         self.profile_name_input = QLineEdit()
         self.profile_name_input.setPlaceholderText("e.g., Game Only, Game + Discord")
         save_layout.addWidget(self.profile_name_input)
-        save_btn = QPushButton("💾 Save Profile")
+        save_btn = QPushButton("Save Profile")
         save_btn.clicked.connect(self.save_profile)
         save_layout.addWidget(save_btn)
         save_group.setLayout(save_layout)
@@ -954,11 +1034,11 @@ class MainWindow(QMainWindow):
         list_layout.addWidget(self.profiles_list)
         
         button_layout = QHBoxLayout()
-        load_btn = QPushButton("✓ Load Selected")
+        load_btn = QPushButton("Load Selected")
         load_btn.clicked.connect(self.load_selected_profile)
         button_layout.addWidget(load_btn)
         
-        delete_btn = QPushButton("✕ Delete Selected")
+        delete_btn = QPushButton("Delete Selected")
         delete_btn.setStyleSheet("background-color: #f44336; color: white;")
         delete_btn.clicked.connect(self.delete_selected_profile)
         button_layout.addWidget(delete_btn)
@@ -1251,7 +1331,7 @@ class MainWindow(QMainWindow):
             
             # Update status
             if current_sources:
-                self.status_label.setText(f"✓ Found {len(current_sources)} audio source(s)")
+                self.status_label.setText(f"Found {len(current_sources)} audio source(s)")
                 self.status_label.setStyleSheet("color: #4CAF50; font-size: 11px;")
 
     def _auto_apply_new_games(self):
@@ -1277,7 +1357,7 @@ class MainWindow(QMainWindow):
                 
                 if success:
                     logger.info(f"Auto-apply successful: {message}")
-                    self.status_label.setText(f"✓ Auto-applied routing to new games")
+                    self.status_label.setText("Auto-applied routing to new games")
                     self.status_label.setStyleSheet("color: #4CAF50; font-size: 11px;")
                     
                     # Update routes display
@@ -1400,7 +1480,7 @@ class MainWindow(QMainWindow):
         
         # Update status
         if sources:
-            self.status_label.setText(f"✓ Found {len(sources)} audio source(s)")
+            self.status_label.setText(f"Found {len(sources)} audio source(s)")
             self.status_label.setStyleSheet("color: #4CAF50; font-size: 11px;")
         else:
             self.status_label.setText("⚠ No audio sources detected (is PipeWire running?)")
@@ -1522,7 +1602,7 @@ class MainWindow(QMainWindow):
         
         if source['type'] == 'Game':
             if is_excluded:
-                action = menu.addAction(f"✓ Include {source['name']} in auto-select")
+                action = menu.addAction(f"Include {source['name']} in auto-select")
                 action.triggered.connect(
                     lambda: self.toggle_game_exclusion(source['name'], exclude=False)
                 )
@@ -1938,9 +2018,9 @@ class MainWindow(QMainWindow):
         minimize_to_tray = new_settings.get('minimize_to_tray', True)
         
         if minimize_to_tray:
-            info_text = "ℹ Minimize to tray enabled. " + ("Quitting will restore default routing" if restore_on_close else "Quitting will keep current routing")
+            info_text = "Minimize to tray enabled. " + ("Quitting will restore default routing" if restore_on_close else "Quitting will keep current routing")
         else:
-            info_text = "ℹ Closing will restore default routing" if restore_on_close else "ℹ Closing will keep current routing"
+            info_text = "Closing will restore default routing" if restore_on_close else "Closing will keep current routing"
         
         self.info_note.setText(info_text)
         

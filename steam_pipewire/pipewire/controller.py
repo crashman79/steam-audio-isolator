@@ -349,8 +349,8 @@ class PipeWireController:
     def create_audio_routing(self, source_ids: List[int], target_node_id: int) -> Tuple[bool, str]:
         """Create audio routing from sources to target node
         
-        First disconnects existing routes (game→sink, game→Steam, sink→Steam), 
-        then creates direct routes.
+        First disconnects ALL routes to Steam (clearing any WirePlumber auto-connections), 
+        then creates direct routes only for selected sources.
         
         Returns:
             Tuple of (success: bool, message: str)
@@ -363,108 +363,19 @@ class PipeWireController:
             if not target_node_id:
                 return False, "Steam node ID not set - is Steam running?"
             
-            # Find the audio sink node (analog output device)
-            audio_sink_id = None
-            try:
-                result = subprocess.run(['pw-dump'], capture_output=True, text=True, timeout=3)
-                if result.returncode == 0:
-                    data = json.loads(result.stdout)
-                    for node in data:
-                        if node.get('type') == 'PipeWire:Interface:Node':
-                            props = node.get('info', {}).get('props', {})
-                            node_name = props.get('node.name', '')
-                            # Look for ALSA analog stereo output
-                            if 'alsa_output' in node_name and 'analog-stereo' in node_name:
-                                audio_sink_id = node.get('id')
-                                logger.debug(f"Found audio sink: node {audio_sink_id} ({props.get('node.description')})")
-                                break
-            except Exception as e:
-                logger.warning(f"Could not detect audio sink: {e}")
-            
-            if not audio_sink_id:
-                logger.warning("Audio sink not found - will only disconnect game→Steam routes")
-            
-            # Disconnect only routes that would interfere with clean recording:
-            # 1. Audio Sink → Steam (prevents ALL system audio from being recorded)
-            # 2. Game → Steam (any existing direct routes, we'll recreate them)
-            # 
-            # IMPORTANT: Do NOT disconnect Game → Audio Sink routes!
-            # Game audio needs to continue playing through speakers.
-            routes_to_remove = []
-            
-            try:
-                logger.debug(f"Looking for routes to remove...")
-                result = subprocess.run(
-                    ['pw-cli', 'list-objects', 'Link'],
-                    capture_output=True,
-                    text=True,
-                    timeout=5
-                )
-                logger.debug(f"pw-cli list-objects returned code: {result.returncode}")
-                
-                if result.returncode == 0:
-                    lines = result.stdout.split('\n')
-                    logger.debug(f"Parsing {len(lines)} lines of link data")
-                    current_link = None
-                    output_node = None
-                    input_node = None
-                    
-                    for line in lines:
-                        id_match = re.match(r'\s*id\s+(\d+)', line)
-                        if id_match:
-                            # Check previous link
-                            if current_link is not None:
-                                # Case 1: Audio sink → Steam (blocks ALL system audio from recording)
-                                if audio_sink_id and output_node == audio_sink_id and input_node == target_node_id:
-                                    logger.debug(f"  Found sink({audio_sink_id})→Steam link: {current_link} (will remove)")
-                                    routes_to_remove.append(current_link)
-                                # Case 2: Selected game → Steam (existing direct route, will recreate)
-                                elif output_node in source_ids and input_node == target_node_id:
-                                    logger.debug(f"  Found game({output_node})→Steam link: {current_link} (will remove)")
-                                    routes_to_remove.append(current_link)
-                                # REMOVED: Don't disconnect game→sink! Game audio must reach speakers.
-                            
-                            current_link = int(id_match.group(1))
-                            output_node = None
-                            input_node = None
-                            continue
-                        
-                        out_match = re.search(r'link\.output\.node\s+=\s+"?(\d+)"?', line)
-                        if out_match:
-                            output_node = int(out_match.group(1))
-                        
-                        in_match = re.search(r'link\.input\.node\s+=\s+"?(\d+)"?', line)
-                        if in_match:
-                            input_node = int(in_match.group(1))
-                    
-                    # Check last link
-                    if current_link is not None:
-                        if audio_sink_id and output_node == audio_sink_id and input_node == target_node_id:
-                            logger.debug(f"  Found sink({audio_sink_id})→Steam link (last): {current_link} (will remove)")
-                            routes_to_remove.append(current_link)
-                        elif output_node in source_ids and input_node == target_node_id:
-                            logger.debug(f"  Found game({output_node})→Steam link (last): {current_link} (will remove)")
-                            routes_to_remove.append(current_link)
-            except Exception as e:
-                logger.debug(f"Error finding links to remove: {e}")
-            
-            # Remove all interfering routes
-            logger.debug(f"Removing {len(routes_to_remove)} existing routes: {routes_to_remove}")
-            for link_id in routes_to_remove:
-                result = _run_pw_cli_safe('destroy', link_id, timeout=3)
-                if result and result.returncode == 0:
-                    logger.debug(f"  ✓ Destroyed link {link_id}")
-                elif result is None:
-                    logger.error(f"  ✗ Timeout destroying link {link_id}")
-                else:
-                    logger.error(f"  ✗ Failed destroying link {link_id}: code {result.returncode}")
+            # STEP 1: Clear ALL routes to Steam first
+            # This ensures we remove any WirePlumber auto-connections (like Bluetooth devices)
+            # that might have been created automatically
+            logger.info("Clearing all existing routes to Steam...")
+            clear_success, clear_msg = self.disconnect_all_from_steam()
+            logger.info(f"Clear result: {clear_msg}")
             
             # Give PipeWire a moment to settle after disconnection
             import time
-            time.sleep(1.0)  # Increased from 0.5s
+            time.sleep(0.5)
             
-            # Validate source nodes before creating routes
-            # Filter out any Bluetooth devices, sinks, or invalid nodes
+            # STEP 2: Validate source nodes before creating routes
+            # Filter out any invalid nodes
             valid_source_ids = []
             for source_id in source_ids:
                 try:
@@ -494,7 +405,7 @@ class PipeWireController:
             
             source_ids = valid_source_ids
             
-            # Now create new direct routes using port-specific connections
+            # STEP 3: Now create new direct routes using port-specific connections
             connected = []
             failed = []
             
@@ -546,7 +457,9 @@ class PipeWireController:
                 else:
                     failed.append(f"Node {source_id}: all channels failed")
             
-            message = f"Removed {len(routes_to_remove)} existing route(s), connected {len(connected)} source(s)"
+            # STEP 4: Report results
+            cleared_count = len(self.get_current_routes()) if not clear_success else 0  # Routes that were cleared
+            message = f"Cleared all Steam routes, connected {len(connected)} source(s)"
             if failed:
                 message += f" ({len(failed)} failed)"
             

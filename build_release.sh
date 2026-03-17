@@ -46,171 +46,43 @@ pyinstaller --name="steam-audio-isolator" \
     --collect-all=PyQt5 \
     steam_pipewire/main.py
 
-# Create release directory structure
+# Create release directory: binary only, no install step
 echo "Creating release package..."
 mkdir -p dist/release
-
-# Extract version from setup.py for changelog extraction
-VERSION=$(grep "version=" setup.py | head -1 | sed "s/.*version=['\"]//;s/['\"].*//" | sed 's/^v//')
-
-# Extract changelog for this version
-echo "Extracting changelog for version $VERSION..."
-python3 << PYSCRIPT
-import re
-import sys
-
-version = "$VERSION"
-
-try:
-    with open("CHANGELOG.md", "r") as f:
-        content = f.read()
-    
-    # Find the version section
-    pattern = rf"## \[{re.escape(version)}\].*?(?=## \[|$)"
-    match = re.search(pattern, content, re.DOTALL)
-    
-    if match:
-        changelog_section = match.group(0).strip()
-        with open("dist/release/CHANGELOG.md", "w") as f:
-            f.write("# Changelog for v" + version + "\n\n")
-            f.write(changelog_section)
-        print(f"✓ Changelog extracted for v{version}")
-    else:
-        print(f"Warning: Could not find changelog section for v{version}")
-except Exception as e:
-    print(f"Warning: Failed to extract changelog: {e}")
-PYSCRIPT
-
-# Copy files to release directory
-echo "Copying files to release directory..."
 cp dist/steam-audio-isolator dist/release/
-cp steam-audio-isolator-256.png dist/release/
-cp steam-audio-isolator.desktop dist/release/
+chmod +x dist/release/steam-audio-isolator
 
-# Create installation script
-cat > dist/release/install.sh << 'EOF'
-#!/bin/bash
-# Installation script for Steam Audio Isolator
-
-set -e
-
-INSTALL_DIR="$HOME/.local/bin"
-DESKTOP_DIR="$HOME/.local/share/applications"
-ICON_DIR="$HOME/.local/share/icons/hicolor/256x256/apps"
-
-echo "=== Steam Audio Isolator Installer ==="
-echo ""
-
-# Create directories
-mkdir -p "$INSTALL_DIR"
-mkdir -p "$DESKTOP_DIR"
-mkdir -p "$ICON_DIR"
-
-# Copy executable
-echo "Installing executable to $INSTALL_DIR..."
-cp steam-audio-isolator "$INSTALL_DIR/"
-chmod +x "$INSTALL_DIR/steam-audio-isolator"
-
-# Copy icon
-echo "Installing icon..."
-cp steam-audio-isolator-256.png "$ICON_DIR/steam-audio-isolator.png"
-
-# Update .desktop file paths
-echo "Installing desktop entry..."
-sed "s|Exec=.*|Exec=$INSTALL_DIR/steam-audio-isolator|g" steam-audio-isolator.desktop > "$DESKTOP_DIR/steam-audio-isolator.desktop"
-chmod +x "$DESKTOP_DIR/steam-audio-isolator.desktop"
-
-# Update desktop database
-if command -v update-desktop-database &> /dev/null; then
-    update-desktop-database "$DESKTOP_DIR"
-fi
-
-echo ""
-echo "✅ Installation complete!"
-echo ""
-echo "You can now:"
-echo "  • Find 'Steam Audio Isolator' in your application menu"
-echo "  • Run from terminal: steam-audio-isolator"
-EOF
-
-# Make install.sh executable
-chmod +x dist/release/install.sh
-
-# Create README for release
+# Minimal README: run the binary; app manages config, menu, autostart
 cat > dist/release/README.txt << 'EOF'
-Steam Audio Isolator - Standalone Release
+Steam Audio Isolator - Standalone binary (no installation)
 
-QUICK START
-===========
+RUN
+===
 
-1. Extract this archive
-2. Run: ./install.sh
-3. Launch from your application menu or run: steam-audio-isolator
+  chmod +x steam-audio-isolator
+  ./steam-audio-isolator
 
-MANUAL INSTALLATION
-===================
-
-If you prefer not to use the install script:
-
-1. Copy 'steam-audio-isolator' to somewhere in your PATH
-   Example: cp steam-audio-isolator ~/.local/bin/
-
-2. Make it executable:
-   chmod +x ~/.local/bin/steam-audio-isolator
-
-3. (Optional) Install desktop entry:
-   cp steam-audio-isolator.desktop ~/.local/share/applications/
-   cp steam-audio-isolator-256.png ~/.local/share/icons/hicolor/256x256/apps/
+On first run the app creates config at ~/.config/steam-audio-isolator/
+Use Settings in the app to add to application menu or launch at login.
 
 REQUIREMENTS
 ============
 
 - Linux with PipeWire (not PulseAudio)
 - Steam with game recording enabled
-- PipeWire tools (pw-cli, pw-dump) - usually pre-installed
-
-RUNNING
-=======
-
-From terminal:
-  ./steam-audio-isolator
-
-Or find it in your application menu after installation.
-
-UNINSTALL
-=========
-
-rm ~/.local/bin/steam-audio-isolator
-rm ~/.local/share/applications/steam-audio-isolator.desktop
-rm ~/.local/share/icons/hicolor/256x256/apps/steam-audio-isolator.png
-rm -rf ~/.config/steam-audio-isolator/
-
-For more information, visit:
-https://github.com/YOUR_USERNAME/steam-audio-isolator
+- pw-cli, pw-dump (usually pre-installed)
 EOF
 
 # Create tarball (preserve file permissions with -p)
 RELEASE_NAME="steam-audio-isolator-linux-x86_64"
 tar -czpf "dist/${RELEASE_NAME}.tar.gz" -C dist/release .
-
-# Calculate size
-SIZE=$(du -h "${RELEASE_NAME}.tar.gz" | cut -f1)
+SIZE=$(du -h "dist/${RELEASE_NAME}.tar.gz" | cut -f1)
 
 echo ""
 echo "=== Build Complete! ==="
 echo ""
-echo "Release package: dist/${RELEASE_NAME}.tar.gz"
-echo "Size: $SIZE"
+echo "Release: dist/${RELEASE_NAME}.tar.gz (size: $SIZE)"
+echo "Contents: steam-audio-isolator, README.txt"
 echo ""
-echo "Contents:"
-echo "  • steam-audio-isolator (executable)"
-echo "  • install.sh (automatic installer)"
-echo "  • steam-audio-isolator-256.png (icon)"
-echo "  • steam-audio-isolator.desktop (desktop entry)"
-echo "  • README.txt (instructions)"
-if [ -f "dist/release/CHANGELOG.md" ]; then
-    echo "  • CHANGELOG.md (version history)"
-fi
-echo ""
-echo "Upload this file to GitHub Releases!"
+echo "No install step. User runs the binary; app manages config, menu, and autostart via Settings."
 echo ""

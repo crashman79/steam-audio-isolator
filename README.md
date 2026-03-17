@@ -78,6 +78,7 @@ This results in cluttered recordings with unwanted sounds mixing into your gamep
   - Auto-detect interval (how often to check for new audio sources)
   - Restore default on close (reconnect audio sink when quitting)
   - Minimize to tray vs. close behavior
+  - **Add to application menu** and **Start when I log in** (app manages desktop and autostart entries itself)
 - 🎨 **Stream Purpose Detection** - Identifies main audio vs. UI sounds vs. voice chat
 - 🚀 **Auto-Apply Routing** - Automatically routes newly detected games
 
@@ -115,47 +116,33 @@ This results in cluttered recordings with unwanted sounds mixing into your gamep
 
 ## Installation
 
-### Option 1: Download Standalone Binary (Recommended)
+Single binary, no installation step. The app manages config, application menu, and autostart itself.
 
-**No Python installation required!** Just download and run.
-
-1. Go to [Releases](https://github.com/crashman79/steam-audio-isolator/releases)
-2. Download `steam-audio-isolator-linux-x86_64.tar.gz`
-3. Extract and install:
+1. Download the Linux binary from [Releases](https://github.com/crashman79/steam-audio-isolator/releases) (e.g. `steam-audio-isolator-linux-x86_64.tar.gz`).
+2. Extract and run:
    ```bash
    tar -xzf steam-audio-isolator-linux-x86_64.tar.gz
    cd steam-audio-isolator-linux-x86_64
-   ./install.sh
+   chmod +x steam-audio-isolator
+   ./steam-audio-isolator
    ```
-4. Launch from application menu or terminal: `steam-audio-isolator`
+3. On first run the app creates config at `~/.config/steam-audio-isolator/`. Use **Settings** in the app to add it to your application menu or to launch at login if you want.
 
-### Option 2: Run from Source
+No Python, no pip, no install script. Run the binary; the app handles the rest.
 
-```bash
-git clone https://github.com/crashman79/steam-audio-isolator.git
-cd steam-audio-isolator
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-python -m steam_pipewire.main
-```
-
-### Option 3: Build Standalone Binary (For Developers)
+### Building the binary (developers)
 
 ```bash
 git clone https://github.com/crashman79/steam-audio-isolator.git
 cd steam-audio-isolator
 pip install -r requirements.txt pyinstaller
-chmod +x build_release.sh
 ./build_release.sh
-
-# Release tarball will be in dist/
+./dist/steam-audio-isolator
 ```
 
 ### Requirements
 
 - **Linux** with PipeWire audio system (not PulseAudio)
-- **Python 3.8+** (if running from source)
 - **Steam** with game recording enabled
 - PipeWire tools: `pw-cli`, `pw-dump` (usually pre-installed)
 
@@ -170,7 +157,7 @@ which pw-dump pw-cli
 ## Quick Start
 
 ### Step 1: Start the Application
-- Launch from application menu or terminal: `steam-audio-isolator`
+- Run the binary (e.g. `./steam-audio-isolator` from the extracted folder, or from the application menu if you enabled **Add to application menu** in Settings)
 - App auto-detects all PipeWire audio sources
 
 ### Step 2: Select Audio Sources
@@ -402,16 +389,9 @@ Contributions welcome! This project benefits from:
 - 🔧 Code optimization
 - 🌍 Testing on different Linux distributions
 
-### Development Setup
+### Development
 
-```bash
-git clone https://github.com/crashman79/steam-audio-isolator.git
-cd steam-audio-isolator
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-python -m steam_pipewire.main
-```
+Clone the repo, build the binary with `./build_release.sh` (see [Building the binary](#building-the-binary-developers)), then run `./dist/steam-audio-isolator`. The app is a single standalone binary; config, menu, and autostart are managed inside the app via Settings.
 
 ---
 

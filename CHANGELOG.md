@@ -5,6 +5,25 @@ All notable changes to Steam Audio Isolator will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2025-03-17
+
+### Added
+- Standalone binary flow: no install step; run binary, app manages config
+- Settings: "Add to application menu" and "Start when I log in" (app writes desktop/autostart)
+- Settings: "Copy to ~/.local/bin" to install binary to PATH-friendly location
+- One-time first-run prompt to install to ~/.local/bin when running from elsewhere
+- Self-install to ~/.local/bin when enabling menu/autostart (avoids paths with spaces)
+- Quoted Exec in desktop files when path contains spaces (fixes launcher when path has spaces)
+
+### Changed
+- Release tarball contains only binary + README (no install.sh)
+- Replaced Unicode symbols in UI with ASCII-safe text (fixes broken icons on some systems)
+- README: install instructions use chmod +x and run binary; menu/autostart via Settings
+
+### Removed
+- run.sh (run the binary directly or from menu)
+- install.sh from release package
+
 ## [0.1.9] - 2025-12-21
 
 ### Added
