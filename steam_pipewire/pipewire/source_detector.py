@@ -118,13 +118,24 @@ class SourceDetector:
 
                 # Look for stream outputs (like games, applications) and audio sinks
                 # Include: Stream/Output/Audio (apps), Audio/Source (mics), Audio/Sink (speakers/headphones)
+                # Also include Stream/Input/Audio for Communication apps (Discord, Zoom, etc.)
                 if not any(cls in media_class for cls in 
-                          ['Stream/Output/Audio', 'Audio/Source', 'Audio/Sink']):
+                          ['Stream/Output/Audio', 'Stream/Input/Audio', 'Audio/Source', 'Audio/Sink']):
                     continue
                 
                 # Skip internal/monitoring streams explicitly
-                if 'Internal' in media_class or 'Stream/Input' in media_class:
+                if 'Internal' in media_class:
                     continue
+                
+                # For Stream/Input/Audio, only allow Communication apps (Discord mic, etc.)
+                if 'Stream/Input/Audio' in media_class:
+                    # Quick pre-check: is this a communication app?
+                    app_binary = props.get('application.process.binary', '').lower()
+                    if not any(x in app_binary for x in 
+                             ['discord', 'slack', 'zoom', 'telegram', 'teams', 'skype', 
+                              'mumble', 'teamspeak', 'element', 'signal', 'whatsapp']):
+                        # Not a communication app, skip this input stream
+                        continue
                 
                 # Skip system echo-cancel, dummy, and internal nodes
                 node_name = props.get('node.name', '').lower()
@@ -149,17 +160,55 @@ class SourceDetector:
                     continue
 
                 source_type = self._determine_source_type(props)
-                description = props.get('node.description') or props.get('application.name') or node_name
+                
+                # Build a clear description
+                # Priority: 
+                #   1. System sources (speakers, etc.): use node.description (descriptive hardware name)
+                #   2. Wine/Proton games: use application.name (has actual game name)
+                #   3. Communication apps: use binary name for clarity ("Discord" not "WEBRTC VoiceEngine")
+                #   4. Other apps: use node.description or application.name (preserve original behavior)
+                #   5. Fallback: node.name
+                app_binary = props.get('application.process.binary', '')
+                app_name = props.get('application.name', '')
+                media_name = props.get('media.name', '')
+                
+                # Start with best available name
+                # System sources (audio devices) should always use descriptive name
+                if source_type == 'System':
+                    description = props.get('node.description') or app_name or node_name
+                # For Wine/Proton games, binary is "wine64-preloader" so use app_name instead
+                elif source_type == 'Game' and any(x in app_binary.lower() for x in ['wine', 'proton', '.exe']):
+                    # Wine/Proton game - use application.name which has the real game name
+                    description = app_name or props.get('node.description') or node_name
+                # For Communication apps, use binary name for clarity (Discord not WEBRTC VoiceEngine)
+                elif source_type == 'Communication' and app_binary and app_binary not in ['', 'pipewire', 'wireplumber']:
+                    # Use binary name and capitalize it nicely
+                    description = app_binary.split('/')[-1]  # Get filename only
+                    description = description.replace('-', ' ').replace('_', ' ').title()
+                else:
+                    # For Application and other types, use original descriptive names
+                    description = props.get('node.description') or app_name or node_name
+                
+                # Add stream direction for communication apps (Input = Microphone, Output = Speakers)
+                if source_type == 'Communication':
+                    if 'Stream/Input/Audio' in media_class:
+                        description += " (Microphone)"
+                    elif 'Stream/Output/Audio' in media_class:
+                        description += " (Voice Chat)"
                 
                 # Enhance description for System devices (output devices) to show function
                 if source_type == 'System' and 'Audio/Sink' in media_class:
                     # This is an output device (speakers, headphones)
                     if 'bluez' in node_name or 'bluetooth' in node_name.lower():
-                        # Bluetooth device - differentiate profiles
-                        if 'headset' in node_name.lower() or 'hsp' in node_name.lower() or 'hfp' in node_name.lower():
-                            description += " [BT Headset - voice/mic]"
+                        # Bluetooth device - differentiate profiles by checking node name patterns
+                        # HSP/HFP = Headset profile (mono, voice quality, bidirectional)
+                        # A2DP = Advanced Audio Distribution Profile (stereo, high quality, output only)
+                        if 'headset_head_unit' in node_name.lower() or 'hsp' in node_name.lower() or 'hfp' in node_name.lower():
+                            description += " [Headset Profile - Mono/Voice]"
+                        elif 'a2dp' in node_name.lower() or 'a2dp_sink' in node_name.lower():
+                            description += " [A2DP - Stereo Audio]"
                         else:
-                            description += " [BT Audio]"
+                            description += " [Bluetooth Audio]"
                     elif 'hdmi' in node_name.lower():
                         description += " [HDMI Output]"
                     elif 'analog' in node_name.lower():
@@ -168,13 +217,13 @@ class SourceDetector:
                         description += " [Output Device]"
                 
                 # Include media.name to distinguish multiple streams from same app
-                media_name = props.get('media.name', '')
+                # (but skip for Communication apps since we already labeled them)
                 stream_purpose = ''
                 if media_name:
                     # Guess the purpose of this stream based on its properties
                     stream_purpose = self._guess_stream_purpose(props, 0)
                     # Only append media_name if we haven't already added a clarifying label
-                    if not (source_type == 'System' and 'Audio/Sink' in media_class):
+                    if not (source_type == 'System' and 'Audio/Sink' in media_class) and source_type != 'Communication':
                         description = f"{description} ({media_name})"
                 
                 source = {

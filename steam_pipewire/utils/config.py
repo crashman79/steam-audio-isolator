@@ -3,6 +3,8 @@
 
 import json
 import os
+import shutil
+import sys
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Dict, Any, List, Optional
@@ -19,7 +21,11 @@ class AppSettings:
     auto_apply_games: bool = True
     minimize_to_tray: bool = True
     theme: str = "system"  # light, dark, or system
-    
+    start_minimized_to_tray: bool = False
+    start_at_login: bool = False
+    add_to_app_menu: bool = False
+    install_prompt_shown: bool = False
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization"""
         return asdict(self)
@@ -39,6 +45,12 @@ class ConfigManager:
         self.config_dir = Path.home() / '.config' / 'steam-audio-isolator'
         self.profiles_dir = self.config_dir / 'profiles'
         self.settings_file = self.config_dir / 'settings.json'
+        self.autostart_dir = Path.home() / '.config' / 'autostart'
+        self.autostart_desktop_path = self.autostart_dir / 'steam-audio-isolator.desktop'
+        self.applications_dir = Path.home() / '.local' / 'share' / 'applications'
+        self.desktop_entry_path = self.applications_dir / 'steam-audio-isolator.desktop'
+        self.install_bin_dir = Path.home() / '.local' / 'bin'
+        self.install_bin_path = self.install_bin_dir / 'steam-audio-isolator'
         self._ensure_dirs()
         self._default_settings = AppSettings()
 
@@ -82,7 +94,10 @@ class ConfigManager:
     def get_setting(self, key: str, default: Any = None) -> Any:
         """Get a single setting value"""
         settings = self.load_settings()
-        return settings.get(key, default if default is not None else self._default_settings.get(key))
+        if default is not None:
+            return settings.get(key, default)
+        defaults = self._default_settings.to_dict()
+        return settings.get(key, defaults.get(key))
 
     def set_setting(self, key: str, value: Any) -> bool:
         """Set a single setting value"""
@@ -166,3 +181,142 @@ class ConfigManager:
             excluded.remove(game_name)
             return self.set_setting('excluded_games', excluded)
         return True
+
+    def is_frozen(self) -> bool:
+        """Return True when running as PyInstaller binary."""
+        return getattr(sys, 'frozen', False)
+
+    def is_running_from_local_bin(self) -> bool:
+        """Return True when the running binary is already in ~/.local/bin."""
+        if not self.is_frozen():
+            return False
+        try:
+            return Path(sys.executable).resolve() == self.install_bin_path.resolve()
+        except Exception:
+            return False
+
+    def ensure_installed_to_local_bin(self, exec_path: str) -> str:
+        """When running as frozen binary, copy self to ~/.local/bin and return that path.
+        Desktop/autostart then use a path without spaces. When not frozen, return exec_path unchanged.
+        """
+        if not exec_path or not self.is_frozen():
+            return exec_path
+        try:
+            self.install_bin_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(sys.executable, self.install_bin_path)
+            self.install_bin_path.chmod(0o755)
+            return str(self.install_bin_path)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Could not install to ~/.local/bin: {e}, using current path")
+            return exec_path
+
+    def install_to_local_bin(self) -> tuple[bool, str]:
+        """Copy the running binary to ~/.local/bin/steam-audio-isolator. Returns (success, message)."""
+        if not self.is_frozen():
+            return False, "Only available when running the standalone binary."
+        try:
+            self.install_bin_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(sys.executable, self.install_bin_path)
+            self.install_bin_path.chmod(0o755)
+            return True, f"Installed to {self.install_bin_path}"
+        except Exception as e:
+            return False, str(e)
+
+    def _quote_exec(self, exec_path: str) -> str:
+        """Quote Exec value if it contains spaces (desktop entry spec)."""
+        if " " in exec_path.strip():
+            return f'"{exec_path}"'
+        return exec_path
+
+    def get_autostart_desktop_content(self, exec_path: str) -> str:
+        """Return desktop file content for XDG autostart."""
+        exec_val = self._quote_exec(exec_path)
+        return (
+            "[Desktop Entry]\n"
+            "Type=Application\n"
+            "Name=Steam Audio Isolator\n"
+            "Comment=Isolate game audio for clean Steam game recording\n"
+            f"Exec={exec_val}\n"
+            "Icon=steam-audio-isolator\n"
+            "Terminal=false\n"
+            "X-GNOME-Autostart-enabled=true\n"
+        )
+
+    def enable_autostart(self, exec_path: str) -> bool:
+        """Create autostart desktop file so app starts at login."""
+        try:
+            exec_path = self.ensure_installed_to_local_bin(exec_path)
+            self.autostart_dir.mkdir(parents=True, exist_ok=True)
+            self.autostart_desktop_path.write_text(
+                self.get_autostart_desktop_content(exec_path),
+                encoding='utf-8'
+            )
+            return True
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Error enabling autostart: {e}")
+            return False
+
+    def disable_autostart(self) -> bool:
+        """Remove autostart desktop file."""
+        try:
+            if self.autostart_desktop_path.exists():
+                self.autostart_desktop_path.unlink()
+                return True
+            return True
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Error disabling autostart: {e}")
+            return False
+
+    def is_autostart_enabled(self) -> bool:
+        """Return whether autostart desktop file exists."""
+        return self.autostart_desktop_path.exists()
+
+    def get_desktop_entry_content(self, exec_path: str) -> str:
+        """Return desktop file content for application menu."""
+        exec_val = self._quote_exec(exec_path)
+        return (
+            "[Desktop Entry]\n"
+            "Version=1.0\n"
+            "Type=Application\n"
+            "Name=Steam Audio Isolator\n"
+            "Comment=Isolate game audio for clean Steam game recording\n"
+            f"Exec={exec_val}\n"
+            "Icon=steam-audio-isolator\n"
+            "Terminal=false\n"
+            "Categories=Audio;Utility;\n"
+            "StartupNotify=true\n"
+        )
+
+    def enable_desktop_entry(self, exec_path: str) -> bool:
+        """Create desktop entry so app appears in application menu."""
+        try:
+            exec_path = self.ensure_installed_to_local_bin(exec_path)
+            self.applications_dir.mkdir(parents=True, exist_ok=True)
+            self.desktop_entry_path.write_text(
+                self.get_desktop_entry_content(exec_path),
+                encoding='utf-8'
+            )
+            return True
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Error enabling desktop entry: {e}")
+            return False
+
+    def disable_desktop_entry(self) -> bool:
+        """Remove desktop entry from application menu."""
+        try:
+            if self.desktop_entry_path.exists():
+                self.desktop_entry_path.unlink()
+                return True
+            return True
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Error disabling desktop entry: {e}")
+            return False
+
+    def is_desktop_entry_enabled(self) -> bool:
+        """Return whether application menu desktop file exists."""
+        return self.desktop_entry_path.exists()

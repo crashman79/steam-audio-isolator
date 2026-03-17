@@ -7,7 +7,9 @@ import os
 import fcntl
 from pathlib import Path
 from PyQt5.QtWidgets import QApplication, QMessageBox
+from PyQt5.QtCore import QTimer
 from steam_pipewire.ui.main_window import MainWindow
+from steam_pipewire.utils.config import ConfigManager
 
 
 # Set up logging
@@ -26,6 +28,13 @@ logging.basicConfig(
     handlers=[file_handler, console_handler]
 )
 logger = logging.getLogger(__name__)
+
+
+def get_autostart_exec_path() -> str:
+    """Return the command used to start this app (for autostart desktop file)."""
+    if getattr(sys, 'frozen', False):
+        return sys.executable
+    return f"{sys.executable} -m steam_pipewire.main"
 
 
 def acquire_lock():
@@ -69,8 +78,16 @@ def main():
     app = QApplication(sys.argv)
     app.setApplicationName("Steam Audio Isolator")
     app.setDesktopFileName("steam-audio-isolator.desktop")
-    window = MainWindow()
-    window.show()
+    exec_path = get_autostart_exec_path()
+    window = MainWindow(exec_path=exec_path)
+    config = ConfigManager()
+    start_minimized = config.get_setting('start_minimized_to_tray')
+    if start_minimized and window.tray_icon is not None and window.tray_icon.isVisible():
+        # Keep window hidden; only tray icon visible
+        pass
+    else:
+        window.show()
+    QTimer.singleShot(300, window.maybe_prompt_install_once)
     sys.exit(app.exec_())
 
 
