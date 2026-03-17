@@ -323,10 +323,17 @@ class SettingsDialog(QWidget):
         self.init_ui()
     
     def init_ui(self):
-        """Initialize settings UI"""
-        layout = QVBoxLayout()
-        layout.setSpacing(15)
+        """Initialize settings UI (two columns)"""
+        main_layout = QVBoxLayout()
+        main_layout.setSpacing(15)
+        columns = QHBoxLayout()
+        columns.setSpacing(20)
+        left = QVBoxLayout()
+        left.setSpacing(15)
+        right = QVBoxLayout()
+        right.setSpacing(15)
         
+        # --- Left column ---
         # Theme selection
         theme_group = QGroupBox("Appearance")
         theme_layout = QHBoxLayout()
@@ -340,7 +347,7 @@ class SettingsDialog(QWidget):
         theme_layout.addWidget(self.theme_combo)
         theme_layout.addStretch()
         theme_group.setLayout(theme_layout)
-        layout.addWidget(theme_group)
+        left.addWidget(theme_group)
         
         # Restore on close
         restore_group = QGroupBox("On Application Close")
@@ -361,7 +368,7 @@ class SettingsDialog(QWidget):
             "When enabled, a confirmation dialog appears before closing the application."
         ))
         restore_group.setLayout(restore_layout)
-        layout.addWidget(restore_group)
+        left.addWidget(restore_group)
         
         # Auto-detect interval
         interval_group = QGroupBox("Source Auto-Detection")
@@ -391,8 +398,10 @@ class SettingsDialog(QWidget):
         ))
         
         interval_group.setLayout(interval_layout)
-        layout.addWidget(interval_group)
+        left.addWidget(interval_group)
+        left.addStretch()
         
+        # --- Right column ---
         # System tray
         tray_group = QGroupBox("System Tray")
         tray_layout = QVBoxLayout()
@@ -427,7 +436,7 @@ class SettingsDialog(QWidget):
         self.copy_bin_status.setStyleSheet("color: #666; font-size: 10px;")
         tray_layout.addWidget(self.copy_bin_status)
         tray_group.setLayout(tray_layout)
-        layout.addWidget(tray_group)
+        right.addWidget(tray_group)
         
         # Icon cache management
         cache_group = QGroupBox("Icon Cache Management")
@@ -459,18 +468,20 @@ class SettingsDialog(QWidget):
         cache_layout.addLayout(btn_layout)
         
         cache_group.setLayout(cache_layout)
-        layout.addWidget(cache_group)
+        right.addWidget(cache_group)
+        right.addStretch()
         
         self._update_cache_status()
         
-        layout.addStretch()
+        columns.addLayout(left, 1)
+        columns.addLayout(right, 1)
+        main_layout.addLayout(columns)
         
-        # Save button
         save_btn = QPushButton("Save Settings")
         save_btn.clicked.connect(self.save_settings)
-        layout.addWidget(save_btn)
+        main_layout.addWidget(save_btn)
         
-        self.setLayout(layout)
+        self.setLayout(main_layout)
     
     def _on_settings_changed(self):
         """Handle settings changes"""
@@ -854,48 +865,51 @@ class MainWindow(QMainWindow):
         )
     
     def create_app_icon(self):
-        """Create a custom colored icon to distinguish from system audio"""
-        # Create a 64x64 pixmap
-        pixmap = QPixmap(64, 64)
+        """Create app icon: rounded square with source -> direct path -> target (distinct from Steam/generic audio)."""
+        from PyQt5.QtGui import QLinearGradient, QPen, QBrush, QPolygon, QPainterPath
+        from PyQt5.QtCore import QPoint, QRectF
+
+        size = 64
+        pixmap = QPixmap(size, size)
         pixmap.fill(Qt.transparent)
-        
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.Antialiasing)
-        
-        # Draw a distinctive colored speaker icon
-        # Use green/blue gradient to stand out from gray audio icons
-        from PyQt5.QtGui import QLinearGradient, QPen, QBrush
-        
-        # Create gradient (teal/cyan color scheme)
-        gradient = QLinearGradient(0, 0, 64, 64)
-        gradient.setColorAt(0, QColor(0, 180, 180))  # Cyan
-        gradient.setColorAt(1, QColor(0, 120, 160))  # Teal
-        
-        # Draw speaker base (trapezoid)
+
+        margin = 4
+        rect = QRectF(margin, margin, size - 2 * margin, size - 2 * margin)
+        gradient = QLinearGradient(0, 0, size, size)
+        gradient.setColorAt(0, QColor(0, 175, 175))
+        gradient.setColorAt(1, QColor(0, 115, 155))
         painter.setBrush(QBrush(gradient))
-        painter.setPen(QPen(QColor(0, 100, 120), 2))
-        from PyQt5.QtCore import QPoint
+        painter.setPen(QPen(QColor(0, 95, 125), 2))
+        painter.drawRoundedRect(rect, 12, 12)
+
+        sx, sy = 14, 36
         speaker_points = [
-            QPoint(12, 20),
-            QPoint(28, 16),
-            QPoint(28, 48),
-            QPoint(12, 44)
+            QPoint(sx, sy + 10),
+            QPoint(sx + 12, sy + 6),
+            QPoint(sx + 12, sy + 18),
+            QPoint(sx, sy + 14),
         ]
-        from PyQt5.QtGui import QPolygon
+        painter.setBrush(QBrush(QColor(255, 255, 255, 230)))
+        painter.setPen(QPen(QColor(0, 90, 120), 1))
         painter.drawPolygon(QPolygon(speaker_points))
-        
-        # Draw speaker cone (small rectangle on left)
-        painter.drawRect(8, 26, 6, 12)
-        
-        # Draw sound waves (arcs)
+        painter.drawRect(sx - 4, sy + 8, 4, 6)
+
+        path = QPainterPath()
+        path.moveTo(sx + 14, sy + 12)
+        path.cubicTo(size * 0.5, size * 0.35, size * 0.65, size * 0.25, size - 14, 14)
         painter.setBrush(Qt.NoBrush)
-        painter.setPen(QPen(QColor(0, 200, 200), 3))
-        painter.drawArc(32, 24, 8, 16, 90 * 16, 180 * 16)
-        painter.drawArc(38, 20, 14, 24, 90 * 16, 180 * 16)
-        painter.drawArc(44, 16, 18, 32, 90 * 16, 180 * 16)
-        
+        painter.setPen(QPen(QColor(255, 255, 255), 3))
+        painter.drawPath(path)
+
+        cx, cy = size - 14, 14
+        r = 5
+        painter.setBrush(QBrush(QColor(255, 255, 255)))
+        painter.setPen(QPen(QColor(0, 90, 120), 1))
+        painter.drawEllipse(QRectF(cx - r, cy - r, 2 * r, 2 * r))
+
         painter.end()
-        
         return QIcon(pixmap)
     
     def _update_graphics_view_theme(self):
