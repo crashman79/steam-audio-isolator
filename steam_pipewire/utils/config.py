@@ -229,21 +229,22 @@ class ConfigManager:
             return f'"{exec_path}"'
         return exec_path
 
-    def get_autostart_desktop_content(self, exec_path: str) -> str:
+    def get_autostart_desktop_content(self, exec_path: str, icon_path: Optional[str] = None) -> str:
         """Return desktop file content for XDG autostart."""
         exec_val = self._quote_exec(exec_path)
+        icon_line = f"Icon={icon_path}\n" if icon_path else "Icon=steam-audio-isolator\n"
         return (
             "[Desktop Entry]\n"
             "Type=Application\n"
             "Name=Steam Audio Isolator\n"
             "Comment=Isolate game audio for clean Steam game recording\n"
             f"Exec={exec_val}\n"
-            "Icon=steam-audio-isolator\n"
+            f"{icon_line}"
             "Terminal=false\n"
             "X-GNOME-Autostart-enabled=true\n"
         )
 
-    def enable_autostart(self, exec_path: str) -> tuple[bool, str]:
+    def enable_autostart(self, exec_path: str, icon_path: Optional[str] = None) -> tuple[bool, str]:
         """Create autostart desktop file so app starts at login. Returns (success, message)."""
         if not exec_path or not exec_path.strip():
             return False, "No executable path available (run from installed binary or use Copy to ~/.local/bin first)."
@@ -251,7 +252,7 @@ class ConfigManager:
             exec_path = self.ensure_installed_to_local_bin(exec_path)
             self.autostart_dir.mkdir(parents=True, exist_ok=True)
             self.autostart_desktop_path.write_text(
-                self.get_autostart_desktop_content(exec_path),
+                self.get_autostart_desktop_content(exec_path, icon_path),
                 encoding='utf-8'
             )
             return True, str(self.autostart_desktop_path)
@@ -276,9 +277,10 @@ class ConfigManager:
         """Return whether autostart desktop file exists."""
         return self.autostart_desktop_path.exists()
 
-    def get_desktop_entry_content(self, exec_path: str) -> str:
+    def get_desktop_entry_content(self, exec_path: str, icon_path: Optional[str] = None) -> str:
         """Return desktop file content for application menu."""
         exec_val = self._quote_exec(exec_path)
+        icon_line = f"Icon={icon_path}\n" if icon_path else "Icon=steam-audio-isolator\n"
         return (
             "[Desktop Entry]\n"
             "Version=1.0\n"
@@ -286,13 +288,13 @@ class ConfigManager:
             "Name=Steam Audio Isolator\n"
             "Comment=Isolate game audio for clean Steam game recording\n"
             f"Exec={exec_val}\n"
-            "Icon=steam-audio-isolator\n"
+            f"{icon_line}"
             "Terminal=false\n"
             "Categories=Audio;Utility;\n"
             "StartupNotify=true\n"
         )
 
-    def enable_desktop_entry(self, exec_path: str) -> tuple[bool, str]:
+    def enable_desktop_entry(self, exec_path: str, icon_path: Optional[str] = None) -> tuple[bool, str]:
         """Create desktop entry so app appears in application menu. Returns (success, message)."""
         if not exec_path or not exec_path.strip():
             return False, "No executable path available (run from installed binary or use Copy to ~/.local/bin first)."
@@ -300,7 +302,7 @@ class ConfigManager:
             exec_path = self.ensure_installed_to_local_bin(exec_path)
             self.applications_dir.mkdir(parents=True, exist_ok=True)
             self.desktop_entry_path.write_text(
-                self.get_desktop_entry_content(exec_path),
+                self.get_desktop_entry_content(exec_path, icon_path),
                 encoding='utf-8'
             )
             return True, str(self.desktop_entry_path)
