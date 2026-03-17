@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
-"""Auto-update: check GitHub Releases, download new binary, replace-and-run."""
+"""Auto-update: check GitHub Releases, download new binary, updater-helper restart."""
 
+import os
 import re
+import tempfile
 import urllib.request
 import urllib.error
 import json
@@ -86,31 +88,41 @@ def has_pending_update() -> bool:
     return is_frozen() and UPDATES_NEW_BINARY.exists()
 
 
-def get_current_binary_path() -> Optional[str]:
+def get_current_binary_path() -> Optional[Path]:
     """Current executable path when frozen; None when not frozen."""
     if not is_frozen():
         return None
-    return __import__("sys").executable
+    p = Path(__import__("sys").executable).resolve()
+    return p if p.is_file() and os.access(p, os.X_OK) else None
 
 
-def restart_to_apply() -> bool:
+def restart_to_apply() -> Tuple[bool, str]:
     """
-    Run the .new binary with --replace-and-run <current_binary>, then exit.
-    Returns True if execv was attempted (caller should exit); False if not possible.
+    Spawn updater-helper script and replace this process with it. The script waits
+    for us to exit, copies .new over current binary, then exec's it (app reappears).
+    Returns (True, "") only when execv is about to run (caller won't see return).
+    Returns (False, error_msg) on failure.
     """
     if not is_frozen():
-        return False
+        return False, "Restart is only available when running the built binary."
     if not UPDATES_NEW_BINARY.exists():
-        return False
+        return False, "No downloaded update found."
     current = get_current_binary_path()
     if not current:
-        return False
+        return False, "Could not determine binary path."
     try:
-        os = __import__("os")
-        os.execv(
-            str(UPDATES_NEW_BINARY),
-            [str(UPDATES_NEW_BINARY), "--replace-and-run", current],
-        )
-    except Exception:
-        return False
-    return True
+        with tempfile.NamedTemporaryFile(
+            mode="w", prefix="steam-audio-isolator-update-", suffix=".sh", delete=False
+        ) as script:
+            script.write(
+                "#!/bin/sh\n"
+                "sleep 1\n"
+                'cp "$1" "$2" && chmod 755 "$2"\n'
+                'rm -f "$0"\n'
+                'exec "$2"\n'
+            )
+        os.chmod(script.name, 0o755)
+        os.execv("/bin/sh", ["/bin/sh", script.name, str(UPDATES_NEW_BINARY), str(current)])
+    except Exception as e:
+        return False, str(e)
+    return True, ""

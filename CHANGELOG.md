@@ -5,6 +5,15 @@ All notable changes to Steam Audio Isolator will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] - 2025-03-17
+
+### Added
+- Install app icon to ~/.local/share/icons/hicolor when enabling application menu (Icon=steam-audio-isolator resolves)
+
+### Changed
+- Auto-update: use updater-helper script (exit → copy .new over binary → exec) so app reopens after restart; removed --replace-and-run
+- generate_icon.py uses Pillow only (no PyQt5); create_app_icon scales for multiple sizes
+
 ## [0.3.1] - 2025-03-17
 
 ### Changed
