@@ -121,14 +121,19 @@ def restart_to_apply() -> Tuple[bool, str]:
                 "#!/bin/sh\n"
                 "sleep 1\n"
                 'cp "$1" "$2" && chmod 755 "$2"\n'
+                "sync\n"
                 'rm -f "$0"\n'
                 'exec "$2"\n'
             )
         os.chmod(script.name, 0o755)
+        # Spawn helper with env stripped of PyInstaller vars so exec'd binary does fresh extract
+        # (otherwise it inherits _MEIPASS2 and tries to load from old process's temp dir)
+        env = {k: v for k, v in os.environ.items() if not k.startswith("_MEI") and k != "PYINSTALLER"}
         subprocess.Popen(
             ["/bin/sh", script.name, new_path, current_path],
             start_new_session=True,
             close_fds=True,
+            env=env,
         )
         sys.exit(0)
     except Exception as e:
