@@ -243,8 +243,10 @@ class ConfigManager:
             "X-GNOME-Autostart-enabled=true\n"
         )
 
-    def enable_autostart(self, exec_path: str) -> bool:
-        """Create autostart desktop file so app starts at login."""
+    def enable_autostart(self, exec_path: str) -> tuple[bool, str]:
+        """Create autostart desktop file so app starts at login. Returns (success, message)."""
+        if not exec_path or not exec_path.strip():
+            return False, "No executable path available (run from installed binary or use Copy to ~/.local/bin first)."
         try:
             exec_path = self.ensure_installed_to_local_bin(exec_path)
             self.autostart_dir.mkdir(parents=True, exist_ok=True)
@@ -252,11 +254,11 @@ class ConfigManager:
                 self.get_autostart_desktop_content(exec_path),
                 encoding='utf-8'
             )
-            return True
+            return True, str(self.autostart_desktop_path)
         except Exception as e:
             import logging
             logging.getLogger(__name__).error(f"Error enabling autostart: {e}")
-            return False
+            return False, str(e)
 
     def disable_autostart(self) -> bool:
         """Remove autostart desktop file."""
@@ -290,8 +292,10 @@ class ConfigManager:
             "StartupNotify=true\n"
         )
 
-    def enable_desktop_entry(self, exec_path: str) -> bool:
-        """Create desktop entry so app appears in application menu."""
+    def enable_desktop_entry(self, exec_path: str) -> tuple[bool, str]:
+        """Create desktop entry so app appears in application menu. Returns (success, message)."""
+        if not exec_path or not exec_path.strip():
+            return False, "No executable path available (run from installed binary or use Copy to ~/.local/bin first)."
         try:
             exec_path = self.ensure_installed_to_local_bin(exec_path)
             self.applications_dir.mkdir(parents=True, exist_ok=True)
@@ -299,11 +303,11 @@ class ConfigManager:
                 self.get_desktop_entry_content(exec_path),
                 encoding='utf-8'
             )
-            return True
+            return True, str(self.desktop_entry_path)
         except Exception as e:
             import logging
             logging.getLogger(__name__).error(f"Error enabling desktop entry: {e}")
-            return False
+            return False, str(e)
 
     def disable_desktop_entry(self) -> bool:
         """Remove desktop entry from application menu."""

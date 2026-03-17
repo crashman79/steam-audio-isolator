@@ -2,10 +2,38 @@
 """Main entry point for Steam Audio Isolator application"""
 
 import sys
-import logging
 import os
-import fcntl
 from pathlib import Path
+
+# --- Replace-and-run: when the new binary is started with --replace-and-run <old_path>, overwrite old with self and re-exec ---
+if getattr(sys, "frozen", False) and "--replace-and-run" in sys.argv:
+    argv = list(sys.argv)
+    try:
+        i = argv.index("--replace-and-run")
+        target = Path(argv[i + 1]).resolve()
+        with open(sys.executable, "rb") as f:
+            data = f.read()
+        with open(target, "wb") as f:
+            f.write(data)
+        target.chmod(0o755)
+        new_argv = [str(target)] + [a for j, a in enumerate(argv) if j not in (i, i + 1)]
+        os.execv(str(target), new_argv)
+    except Exception:
+        pass
+    sys.exit(0)
+
+# --- Stale update cleanup: when running as built binary (and not from .new), remove leftover .new file ---
+if getattr(sys, "frozen", False):
+    new_path = Path.home() / ".cache" / "steam-audio-isolator" / "steam-audio-isolator.new"
+    if new_path.exists() and Path(sys.executable).resolve() != new_path.resolve():
+        try:
+            new_path.unlink()
+        except Exception:
+            pass
+
+# --- Normal imports and startup ---
+import logging
+import fcntl
 from PyQt5.QtWidgets import QApplication, QMessageBox
 from PyQt5.QtCore import QTimer
 from steam_pipewire.ui.main_window import MainWindow
@@ -83,8 +111,8 @@ def main():
     config = ConfigManager()
     start_minimized = config.get_setting('start_minimized_to_tray')
     if start_minimized and window.tray_icon is not None and window.tray_icon.isVisible():
-        # Keep window hidden; only tray icon visible
-        pass
+        # Keep window hidden; only tray icon visible — show popup so user notices
+        QTimer.singleShot(800, window.show_tray_launch_notification)
     else:
         window.show()
     QTimer.singleShot(300, window.maybe_prompt_install_once)

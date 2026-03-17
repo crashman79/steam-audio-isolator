@@ -3,29 +3,22 @@
 ## Project Overview
 This is a PyQt5-based GUI application that isolates game audio for clean Steam game recording on Linux. The app allows users to select which audio sources (game audio) should be routed directly to Steam's recording input, filtering out system audio, browser audio, and other non-game sources.
 
-**Current Version:** v0.1.1  
+**Current Version:** v0.2.0  
 **Repository:** https://github.com/crashman79/steam-audio-isolator  
-**Status:** Active development, public releases available
+**Status:** Active development, standalone binary releases
 
 ## Current Implementation Status
-- ✅ Complete PyQt5 GUI with tabbed interface
-- ✅ Real-time PipeWire node detection and analysis with caching
-- ✅ Intelligent source categorization (Game, Browser, System, Communication, Application)
-- ✅ Direct node-to-node audio routing via pw-cli
-- ✅ Route management (view current routes, apply new routes, disconnect)
-- ✅ System information and debugging view
-- ✅ Error handling and user feedback
-- ✅ Standalone binary builds via PyInstaller
-- ✅ Automated GitHub Actions CI/CD
-- ✅ Desktop integration (.desktop file, system tray)
+- Standalone single-binary distribution (no install script; app manages config, menu, autostart)
+- PyQt5 GUI with 6 tabs (Audio Routing, Current Routes, System Info, Settings, Profiles, About)
+- System tray with Show, Settings, Apply/Clear routing, Refresh, Quit
+- Settings: Copy to ~/.local/bin, Add to application menu, Start when I log in, start minimized, theme, etc.
+- One-time first-run prompt to install binary to ~/.local/bin when run from elsewhere
+- Real-time PipeWire source detection and categorization; direct routing via pw-cli
+- Profile save/load; icon cache; GitHub Actions build and release on tag push
 
 ## How to Run
-1. From terminal in the project directory:
-   ```bash
-   "/home/crashman79/development/steam pipewire helper/.venv/bin/python" -m steam_pipewire.main
-   ```
-
-2. Or use VS Code task: Press Ctrl+Shift+B and select "Run Steam PipeWire Helper"
+1. **Standalone binary (recommended):** Build with `./build_release.sh`, then run `./dist/steam-audio-isolator`.
+2. **From source:** `python -m steam_pipewire.main` (requires venv and `pip install -r requirements.txt`).
 
 ## PipeWire Configuration Analysis (Duckov Example)
 

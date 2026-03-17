@@ -5,6 +5,21 @@ All notable changes to Steam Audio Isolator will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2025-03-17
+
+### Added
+- Auto-update: Check for updates, download, and restart-to-apply from About tab (built binary only)
+- Replace-and-run flow: new binary overwrites old in place and restarts (no separate installer)
+- GitHub Release asset `steam-audio-isolator` for updater; workflow uploads binary and tarball
+- Tray launch notification when app starts minimized or is minimized to tray
+- QToolTip styling in theme (padding, border, max-width) for consistent tooltips
+
+### Changed
+- Wayland: skip activateWindow/raise_ when showing from tray to avoid qt.qpa.wayland warning
+- Settings save shows success or per-option errors (e.g. application menu / autostart creation failed)
+- Add to application menu / Start at login checkboxes sync from actual desktop files on load
+- Stale update cleanup: only remove .new file when not running from it
+
 ## [0.2.0] - 2025-03-17
 
 ### Added

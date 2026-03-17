@@ -167,11 +167,19 @@ This is based on stream names and ports, allowing selective routing if desired.
 ```
 ~/.config/steam-audio-isolator/settings.json
 {
-  "restore_on_close": true,           # Reconnect sink when exiting
-  "auto_detect_interval": 3.0,        # Seconds between source checks
-  "minimize_to_tray": true            # Hide instead of close
+  "restore_default_on_close": true,
+  "prompt_on_close": true,
+  "auto_detect_interval": 3,
+  "auto_apply_games": true,
+  "minimize_to_tray": true,
+  "theme": "system",
+  "start_minimized_to_tray": false,
+  "start_at_login": false,
+  "add_to_app_menu": false,
+  "install_prompt_shown": false
 }
 ```
+When "Add to application menu" or "Start when I log in" is enabled, the app copies the running binary to `~/.local/bin/steam-audio-isolator` (when running as a PyInstaller binary) and writes the desktop or autostart file with that path, so launchers work regardless of where the binary was originally run from.
 
 ### Profile Storage
 ```
@@ -265,23 +273,7 @@ pw-cli destroy 200
 pw-cli create-link 137 154
 ```
 
-## Future Improvements
-
-- Per-stream routing (select which game streams go to Steam)
-- Audio level monitoring with visual indicators
-- Automatic route creation based on Steam's current game
-- Advanced PipeWire configuration export/import
-- User-customizable app detection patterns
-
-## References
-
-- [PipeWire Documentation](https://pipewire.org/)
-- [pw-dump Reference](https://manpages.debian.org/bookworm/pipewire/pw-dump.1.en.html)
-- [pw-cli Reference](https://manpages.debian.org/bookworm/pipewire/pw-cli.1.en.html)
-- [Steam Game Recording on Linux](https://support.steampowered.com/kb_article.php?ref=8789-YDXV-8589)
-```
-
-### View graph in real-time
+### View graph in real time
 ```bash
 pw-top
 ```
@@ -295,6 +287,14 @@ pw-dump --monitor
 ```bash
 pw-dump | grep -i steam
 ```
+
+## Future Improvements
+
+- Per-stream routing (select which game streams go to Steam)
+- Audio level monitoring with visual indicators
+- Automatic route creation based on Steam's current game
+- Advanced PipeWire configuration export/import
+- User-customizable app detection patterns
 
 ## Multi-Stream Games
 
@@ -311,8 +311,10 @@ The app detects these using `media.role` hints:
 
 This allows fine-grained control over what gets recorded.
 
-## Further Reading
+## References
 
-- [PipeWire Documentation](https://docs.pipewire.org/)
+- [PipeWire Documentation](https://pipewire.org/)
+- [pw-dump Reference](https://manpages.debian.org/bookworm/pipewire/pw-dump.1.en.html)
+- [pw-cli Reference](https://manpages.debian.org/bookworm/pipewire/pw-cli.1.en.html)
+- [Steam Game Recording on Linux](https://support.steampowered.com/kb_article.php?ref=8789-YDXV-8589)
 - [PipeWire Wiki](https://gitlab.freedesktop.org/pipewire/pipewire/-/wikis/home)
-- [pw-cli Manual](https://docs.pipewire.org/page_man_pw-cli_1.html)
