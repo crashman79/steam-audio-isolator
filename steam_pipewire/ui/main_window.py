@@ -506,7 +506,9 @@ class SettingsDialog(QWidget):
         errors = []
         icon_path = None
         if self.settings['add_to_app_menu'] or self.settings['start_at_login']:
-            icon_path = self._install_app_icon_to_hicolor()
+            main_win = self.window()
+            if hasattr(main_win, '_install_app_icon_to_hicolor'):
+                icon_path = main_win._install_app_icon_to_hicolor()
         if self.settings['start_at_login']:
             ok, msg = self.config.enable_autostart(self._exec_path, icon_path)
             if not ok:
@@ -1187,13 +1189,14 @@ class MainWindow(QMainWindow):
                 btn_row = QHBoxLayout()
                 check_btn = QPushButton("Check for updates")
                 download_btn = QPushButton("Download update")
-                download_btn.setEnabled(False)
                 restart_btn = QPushButton("Restart to apply update")
-                restart_btn.setEnabled(updater.has_pending_update())
                 btn_row.addWidget(check_btn)
                 btn_row.addWidget(download_btn)
                 btn_row.addWidget(restart_btn)
                 btn_row.addStretch()
+                # Contextual visibility: only Check initially; Download when update ready; Restart replaces Download when downloaded
+                download_btn.setVisible(False)
+                restart_btn.setVisible(updater.has_pending_update())
                 update_layout.addLayout(btn_row)
                 update_group.setLayout(update_layout)
                 layout.addWidget(update_group)
@@ -1207,7 +1210,12 @@ class MainWindow(QMainWindow):
                 def on_check_result(success, message, latest_tag, download_url):
                     update_status.setText(message)
                     widget.update_download_url = download_url
-                    download_btn.setEnabled(bool(download_url))
+                    if download_url:
+                        download_btn.setVisible(True)
+                        restart_btn.setVisible(False)
+                    else:
+                        download_btn.setVisible(False)
+                        restart_btn.setVisible(updater.has_pending_update())
 
                 def on_check_clicked():
                     check_btn.setEnabled(False)
@@ -1221,8 +1229,8 @@ class MainWindow(QMainWindow):
                 def on_download_result(success, message):
                     update_status.setText(message)
                     if success:
-                        download_btn.setEnabled(False)
-                        restart_btn.setEnabled(updater.has_pending_update())
+                        download_btn.setVisible(False)
+                        restart_btn.setVisible(True)
 
                 def on_download_clicked():
                     url = getattr(widget, "update_download_url", None)
@@ -1233,7 +1241,7 @@ class MainWindow(QMainWindow):
                     t = DownloadUpdateThread(url)
                     download_thread[0] = t
                     t.result.connect(on_download_result)
-                    t.finished.connect(lambda: download_btn.setEnabled(bool(widget.update_download_url)))
+                    t.finished.connect(lambda: download_btn.setEnabled(True))
                     t.start()
 
                 def on_restart_clicked():

@@ -3,6 +3,8 @@
 
 import os
 import re
+import subprocess
+import sys
 import tempfile
 import urllib.request
 import urllib.error
@@ -98,10 +100,9 @@ def get_current_binary_path() -> Optional[Path]:
 
 def restart_to_apply() -> Tuple[bool, str]:
     """
-    Spawn updater-helper script and replace this process with it. The script waits
-    for us to exit, copies .new over current binary, then exec's it (app reappears).
-    Returns (True, "") only when execv is about to run (caller won't see return).
-    Returns (False, error_msg) on failure.
+    Spawn updater-helper script in a detached child process, then exit. The helper
+    waits for this process to exit, copies .new over current binary, then exec's it.
+    Returns (False, error_msg) on failure; on success we exit and never return.
     """
     if not is_frozen():
         return False, "Restart is only available when running the built binary."
@@ -110,6 +111,8 @@ def restart_to_apply() -> Tuple[bool, str]:
     current = get_current_binary_path()
     if not current:
         return False, "Could not determine binary path."
+    new_path = str(UPDATES_NEW_BINARY.resolve())
+    current_path = str(current.resolve())
     try:
         with tempfile.NamedTemporaryFile(
             mode="w", prefix="steam-audio-isolator-update-", suffix=".sh", delete=False
@@ -122,7 +125,12 @@ def restart_to_apply() -> Tuple[bool, str]:
                 'exec "$2"\n'
             )
         os.chmod(script.name, 0o755)
-        os.execv("/bin/sh", ["/bin/sh", script.name, str(UPDATES_NEW_BINARY), str(current)])
+        subprocess.Popen(
+            ["/bin/sh", script.name, new_path, current_path],
+            start_new_session=True,
+            close_fds=True,
+        )
+        sys.exit(0)
     except Exception as e:
         return False, str(e)
     return True, ""
