@@ -504,15 +504,17 @@ class SettingsDialog(QWidget):
         
         self.config.save_settings(self.settings)
         errors = []
+        icon_path = None
+        if self.settings['add_to_app_menu'] or self.settings['start_at_login']:
+            icon_path = self._install_app_icon_to_hicolor()
         if self.settings['start_at_login']:
-            ok, msg = self.config.enable_autostart(self._exec_path)
+            ok, msg = self.config.enable_autostart(self._exec_path, icon_path)
             if not ok:
                 errors.append(f"Start at login: {msg}")
         else:
             self.config.disable_autostart()
         if self.settings['add_to_app_menu']:
-            self._install_app_icon_to_hicolor()
-            ok, msg = self.config.enable_desktop_entry(self._exec_path)
+            ok, msg = self.config.enable_desktop_entry(self._exec_path, icon_path)
             if not ok:
                 errors.append(f"Application menu: {msg}")
         else:
@@ -913,12 +915,13 @@ class MainWindow(QMainWindow):
         return QIcon(pixmap)
 
     def _install_app_icon_to_hicolor(self):
-        """Install app icon to ~/.local/share/icons/hicolor so desktop entry Icon=steam-audio-isolator resolves."""
+        """Install app icon to ~/.local/share/icons/hicolor. Returns full path to 256px icon for desktop Icon=, or None."""
         import logging
         from pathlib import Path
         logger = logging.getLogger(__name__)
         base = Path.home() / '.local' / 'share' / 'icons' / 'hicolor'
         name = 'steam-audio-isolator.png'
+        icon_256_path = None
         for s in (48, 64, 128, 256):
             dir_path = base / f'{s}x{s}' / 'apps'
             dir_path.mkdir(parents=True, exist_ok=True)
@@ -926,8 +929,11 @@ class MainWindow(QMainWindow):
             pixmap = self.create_app_icon(size=s).pixmap(s, s)
             if not pixmap.isNull() and pixmap.save(str(path), 'PNG'):
                 logger.debug(f"Installed icon to {path}")
+                if s == 256:
+                    icon_256_path = str(path.resolve())
             else:
                 logger.warning(f"Failed to save icon to {path}")
+        return icon_256_path
 
     def _update_graphics_view_theme(self):
         """Update graphics view background color based on current theme"""
