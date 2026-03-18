@@ -283,9 +283,12 @@ class UpdateCheckThread(QThread):
 
     def run(self):
         try:
+            import os
             from steam_pipewire.utils import updater
             from steam_pipewire import __version__
-            r = updater.check_for_updates(__version__)
+            # For testing: set STEAM_AUDIO_ISOLATOR_FAKE_VERSION=0.1.0 to simulate "update available"
+            current = os.environ.get("STEAM_AUDIO_ISOLATOR_FAKE_VERSION") or __version__
+            r = updater.check_for_updates(current)
             self.result.emit(*r)
         except Exception as e:
             self.result.emit(False, str(e), None, None)
