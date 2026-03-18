@@ -20,6 +20,16 @@ UPDATES_NEW_BINARY = UPDATES_CACHE_DIR / "steam-audio-isolator.new"
 RELEASE_ASSET_NAME = "steam-audio-isolator"
 
 
+def _ssl_context():
+    """SSL context that works when frozen (PyInstaller) by using certifi's CA bundle."""
+    try:
+        import certifi
+        return ssl.create_default_context(cafile=certifi.where())
+    except Exception:
+        pass
+    return ssl.create_default_context()
+
+
 def _parse_version(tag: str) -> Tuple[int, ...]:
     """Normalize version string to tuple for comparison. tag e.g. 'v0.2.0' or '0.2.0'."""
     s = tag.lstrip("v").strip()
@@ -41,7 +51,7 @@ def check_for_updates(current_version: str) -> Tuple[bool, str, Optional[str], O
             GITHUB_RELEASES_API,
             headers={"Accept": "application/vnd.github.v3+json"},
         )
-        with urllib.request.urlopen(req, timeout=10, context=ssl.create_default_context()) as resp:
+        with urllib.request.urlopen(req, timeout=10, context=_ssl_context()) as resp:
             data = json.loads(resp.read().decode())
     except urllib.error.URLError as e:
         return False, f"Update check failed: {e.reason}", None, None
@@ -76,7 +86,7 @@ def download_update(download_url: str) -> Tuple[bool, str]:
             download_url,
             headers={"Accept": "application/octet-stream"},
         )
-        with urllib.request.urlopen(req, timeout=60, context=ssl.create_default_context()) as resp:
+        with urllib.request.urlopen(req, timeout=60, context=_ssl_context()) as resp:
             data = resp.read()
         UPDATES_NEW_BINARY.write_bytes(data)
         UPDATES_NEW_BINARY.chmod(0o755)
@@ -126,9 +136,14 @@ def restart_to_apply() -> Tuple[bool, str]:
                 'exec "$2"\n'
             )
         os.chmod(script.name, 0o755)
-        # Spawn helper with env stripped of PyInstaller vars so exec'd binary does fresh extract
-        # (otherwise it inherits _MEIPASS2 and tries to load from old process's temp dir)
-        env = {k: v for k, v in os.environ.items() if not k.startswith("_MEI") and k != "PYINSTALLER"}
+        # Spawn helper with a whitelisted env so exec'd binary gets a clean env and does fresh onefile extract.
+        # Passing through PyInstaller/LD_* vars causes "Failed to load Python shared library" from wrong _MEI path.
+        _safe = (
+            "HOME", "USER", "LOGNAME", "PATH", "SHELL", "LANG", "LC_ALL", "LC_CTYPE",
+            "DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "XDG_SESSION_TYPE",
+            "DBUS_SESSION_BUS_ADDRESS", "XDG_CURRENT_DESKTOP", "XDG_SESSION_DESKTOP",
+        )
+        env = {k: os.environ[k] for k in _safe if k in os.environ}
         subprocess.Popen(
             ["/bin/sh", script.name, new_path, current_path],
             start_new_session=True,

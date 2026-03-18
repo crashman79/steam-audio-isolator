@@ -44,6 +44,8 @@ pyinstaller --name="steam-audio-isolator" \
     --hidden-import=PyQt5.QtGui \
     --hidden-import=PyQt5.QtWidgets \
     --collect-all=PyQt5 \
+    --collect-data=certifi \
+    --hidden-import=certifi \
     steam_pipewire/main.py
 
 # Create release directory: binary only, no install step

@@ -5,6 +5,17 @@ import sys
 import os
 from pathlib import Path
 
+# --- When frozen, point SSL at certifi's bundle so HTTPS (e.g. update check) works ---
+if getattr(sys, "frozen", False):
+    try:
+        import certifi
+        cafile = certifi.where()
+        if os.path.isfile(cafile):
+            os.environ.setdefault("SSL_CERT_FILE", cafile)
+            os.environ.setdefault("REQUESTS_CA_BUNDLE", cafile)
+    except Exception:
+        pass
+
 # --- Stale update cleanup: when running as built binary (and not from .new), remove leftover .new file ---
 if getattr(sys, "frozen", False):
     new_path = Path.home() / ".cache" / "steam-audio-isolator" / "steam-audio-isolator.new"

@@ -197,7 +197,7 @@ class ConfigManager:
 
     def ensure_installed_to_local_bin(self, exec_path: str) -> str:
         """When running as frozen binary, copy self to ~/.local/bin and return that path.
-        Desktop/autostart then use a path without spaces. When not frozen, return exec_path unchanged.
+        Desktop/autostart always use this path when frozen. When not frozen, return exec_path unchanged.
         """
         if not exec_path or not self.is_frozen():
             return exec_path
@@ -205,7 +205,7 @@ class ConfigManager:
             self.install_bin_dir.mkdir(parents=True, exist_ok=True)
             shutil.copy2(sys.executable, self.install_bin_path)
             self.install_bin_path.chmod(0o755)
-            return str(self.install_bin_path)
+            return str(self.install_bin_path.resolve())
         except Exception as e:
             import logging
             logging.getLogger(__name__).warning(f"Could not install to ~/.local/bin: {e}, using current path")
@@ -245,11 +245,11 @@ class ConfigManager:
         )
 
     def enable_autostart(self, exec_path: str, icon_path: Optional[str] = None) -> tuple[bool, str]:
-        """Create autostart desktop file so app starts at login. Returns (success, message)."""
+        """Create autostart desktop file so app starts at login. Uses ~/.local/bin copy when frozen. Returns (success, message)."""
         if not exec_path or not exec_path.strip():
             return False, "No executable path available (run from installed binary or use Copy to ~/.local/bin first)."
         try:
-            exec_path = self.ensure_installed_to_local_bin(exec_path)
+            exec_path = self.ensure_installed_to_local_bin(exec_path)  # copy to ~/.local/bin when frozen, then use that path
             self.autostart_dir.mkdir(parents=True, exist_ok=True)
             self.autostart_desktop_path.write_text(
                 self.get_autostart_desktop_content(exec_path, icon_path),
@@ -295,11 +295,11 @@ class ConfigManager:
         )
 
     def enable_desktop_entry(self, exec_path: str, icon_path: Optional[str] = None) -> tuple[bool, str]:
-        """Create desktop entry so app appears in application menu. Returns (success, message)."""
+        """Create desktop entry so app appears in application menu. Uses ~/.local/bin copy when frozen. Returns (success, message)."""
         if not exec_path or not exec_path.strip():
             return False, "No executable path available (run from installed binary or use Copy to ~/.local/bin first)."
         try:
-            exec_path = self.ensure_installed_to_local_bin(exec_path)
+            exec_path = self.ensure_installed_to_local_bin(exec_path)  # copy to ~/.local/bin when frozen, then use that path
             self.applications_dir.mkdir(parents=True, exist_ok=True)
             self.desktop_entry_path.write_text(
                 self.get_desktop_entry_content(exec_path, icon_path),
