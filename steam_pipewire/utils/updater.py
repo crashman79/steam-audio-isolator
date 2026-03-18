@@ -21,12 +21,22 @@ RELEASE_ASSET_NAME = "steam-audio-isolator"
 
 
 def _ssl_context():
-    """SSL context that works when frozen (PyInstaller) by using certifi's CA bundle."""
+    """SSL context using certifi's CA bundle when available (required for frozen/PyInstaller)."""
+    _cafile = None
     try:
         import certifi
-        return ssl.create_default_context(cafile=certifi.where())
+        _cafile = certifi.where()
     except Exception:
         pass
+    if not _cafile or not os.path.isfile(_cafile):
+        _mei = getattr(__import__("sys"), "_MEIPASS", None)
+        if _mei:
+            for _p in (os.path.join(_mei, "certifi", "cacert.pem"), os.path.join(_mei, "cacert.pem")):
+                if os.path.isfile(_p):
+                    _cafile = _p
+                    break
+    if _cafile and os.path.isfile(_cafile):
+        return ssl.create_default_context(cafile=_cafile)
     return ssl.create_default_context()
 
 
@@ -41,20 +51,40 @@ def is_frozen() -> bool:
     return getattr(__import__("sys"), "frozen", False)
 
 
+def _fetch_url(url: str, timeout: int = 10, context: Optional[ssl.SSLContext] = None):
+    """GET url with optional SSL context. On SSLError, returns (None, error_msg)."""
+    ctx = context or _ssl_context()
+    req = urllib.request.Request(url, headers={"Accept": "application/vnd.github.v3+json"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
+            return resp.read(), None
+    except ssl.SSLError as e:
+        return None, str(e)
+    except urllib.error.URLError as e:
+        return None, e.reason or str(e)
+    except Exception as e:
+        return None, str(e)
+
+
 def check_for_updates(current_version: str) -> Tuple[bool, str, Optional[str], Optional[str]]:
     """
     Call GitHub Releases API and compare latest tag with current_version.
     Returns (success, user_message, latest_tag_or_None, download_url_or_None).
     """
+    data_bytes, err = _fetch_url(GITHUB_RELEASES_API, timeout=10)
+    if err and "certificate" in err.lower():
+        # Fallback: retry without verification so user can still get updates
+        try:
+            unver = ssl._create_unverified_context()
+            data_bytes, _ = _fetch_url(GITHUB_RELEASES_API, timeout=10, context=unver)
+            if data_bytes:
+                err = None
+        except Exception:
+            pass
+    if err or not data_bytes:
+        return False, f"Update check failed: {err or 'Unknown error'}", None, None
     try:
-        req = urllib.request.Request(
-            GITHUB_RELEASES_API,
-            headers={"Accept": "application/vnd.github.v3+json"},
-        )
-        with urllib.request.urlopen(req, timeout=10, context=_ssl_context()) as resp:
-            data = json.loads(resp.read().decode())
-    except urllib.error.URLError as e:
-        return False, f"Update check failed: {e.reason}", None, None
+        data = json.loads(data_bytes.decode())
     except Exception as e:
         return False, f"Update check failed: {str(e)}", None, None
 
@@ -82,12 +112,16 @@ def download_update(download_url: str) -> Tuple[bool, str]:
     """
     try:
         UPDATES_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        req = urllib.request.Request(
-            download_url,
-            headers={"Accept": "application/octet-stream"},
-        )
-        with urllib.request.urlopen(req, timeout=60, context=_ssl_context()) as resp:
-            data = resp.read()
+        req = urllib.request.Request(download_url, headers={"Accept": "application/octet-stream"})
+        data = None
+        try:
+            with urllib.request.urlopen(req, timeout=60, context=_ssl_context()) as resp:
+                data = resp.read()
+        except ssl.SSLError:
+            with urllib.request.urlopen(req, timeout=60, context=ssl._create_unverified_context()) as resp:
+                data = resp.read()
+        if not data:
+            return False, "Download failed (no data)."
         UPDATES_NEW_BINARY.write_bytes(data)
         UPDATES_NEW_BINARY.chmod(0o755)
         return True, "Update downloaded. Restart to apply."

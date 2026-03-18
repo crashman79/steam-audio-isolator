@@ -7,14 +7,22 @@ from pathlib import Path
 
 # --- When frozen, point SSL at certifi's bundle so HTTPS (e.g. update check) works ---
 if getattr(sys, "frozen", False):
+    _cafile = None
     try:
         import certifi
-        cafile = certifi.where()
-        if os.path.isfile(cafile):
-            os.environ.setdefault("SSL_CERT_FILE", cafile)
-            os.environ.setdefault("REQUESTS_CA_BUNDLE", cafile)
+        _cafile = certifi.where()
     except Exception:
         pass
+    if not _cafile or not os.path.isfile(_cafile):
+        _mei = getattr(sys, "_MEIPASS", None)
+        if _mei:
+            for _p in (os.path.join(_mei, "certifi", "cacert.pem"), os.path.join(_mei, "cacert.pem")):
+                if os.path.isfile(_p):
+                    _cafile = _p
+                    break
+    if _cafile and os.path.isfile(_cafile):
+        os.environ.setdefault("SSL_CERT_FILE", _cafile)
+        os.environ.setdefault("REQUESTS_CA_BUNDLE", _cafile)
 
 # --- Stale update cleanup: when running as built binary (and not from .new), remove leftover .new file ---
 if getattr(sys, "frozen", False):

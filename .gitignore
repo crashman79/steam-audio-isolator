@@ -5,10 +5,10 @@ __pycache__/
 *.so
 .Python
 
-# Build and distribution
+# Build and distribution (CI builds these; do not commit)
 build/
-develop-eggs/
 dist/
+develop-eggs/
 downloads/
 eggs/
 .eggs/
