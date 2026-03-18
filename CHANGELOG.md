@@ -5,6 +5,11 @@ All notable changes to Steam Audio Isolator will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.8] - 2025-03-17
+
+### Fixed
+- Theme "System": use Qt palette as fallback on Linux so dark mode is detected on KDE/other desktops (darkdetect only checks GNOME gsettings)
+
 ## [0.3.7] - 2025-03-17
 
 ### Changed

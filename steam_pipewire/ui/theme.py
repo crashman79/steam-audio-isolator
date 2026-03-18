@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Theme management for Steam Audio Isolator"""
 
+import sys
 from enum import Enum
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtGui import QColor, QFont, QPalette
-import darkdetect
 
 
 class Theme(Enum):
@@ -39,13 +39,25 @@ class ThemeManager:
     
     @staticmethod
     def get_system_theme() -> Theme:
-        """Detect system theme preference"""
+        """Detect system theme preference. Uses darkdetect (GNOME/gsettings) then Qt palette as fallback on Linux."""
         try:
-            is_dark = darkdetect.isDark()
-            return Theme.DARK if is_dark else Theme.LIGHT
+            import darkdetect
+            if darkdetect.isDark():
+                return Theme.DARK
         except Exception:
-            # Fallback to light if detection fails
-            return Theme.LIGHT
+            pass
+        # Fallback on Linux: Qt may have the real system palette before we override it (e.g. KDE, XFCE)
+        if sys.platform.startswith("linux"):
+            try:
+                app = QApplication.instance()
+                if app is not None:
+                    p = app.palette()
+                    window_lightness = p.color(QPalette.Window).lightness()
+                    if window_lightness < 128:
+                        return Theme.DARK
+            except Exception:
+                pass
+        return Theme.LIGHT
     
     @staticmethod
     def get_colors(theme: Theme) -> dict:
