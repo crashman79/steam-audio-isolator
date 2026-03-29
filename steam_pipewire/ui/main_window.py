@@ -392,7 +392,7 @@ class SettingsDialog(QWidget):
         
         # Auto-apply routing checkbox
         self.auto_apply_checkbox = QCheckBox("Automatically apply routing when new games are detected")
-        self.auto_apply_checkbox.setChecked(self.settings.get('auto_apply_games', False))
+        self.auto_apply_checkbox.setChecked(self.settings.get('auto_apply_games', True))
         self.auto_apply_checkbox.stateChanged.connect(self._on_settings_changed)
         interval_layout.addWidget(self.auto_apply_checkbox)
         interval_layout.addWidget(QLabel(
@@ -715,6 +715,7 @@ class MainWindow(QMainWindow):
         self.last_sources_hash = None  # Track source changes for auto-detect
         self.auto_detect_timer = None  # Timer for auto-detect polling
         self.previously_detected_games = set()  # Track game sources for auto-apply
+        self._startup_auto_apply_done = False  # One-shot apply when games exist on first scan
         
         # Load settings
         self.settings = self.config.load_settings()
@@ -1446,9 +1447,11 @@ class MainWindow(QMainWindow):
         logger = logging.getLogger(__name__)
         
         if self.detector_thread and self.detector_thread.isRunning():
-            logger.error("Source detection timeout! Force killing thread.")
-            self.detector_thread.terminate()
-            self.detector_thread.wait(1000)  # Wait up to 1 second for graceful shutdown
+            logger.error("Source detection timeout; killing pw-dump subprocess (avoid QThread.terminate)")
+            try:
+                self.detector_thread.detector.abort_active_dump()
+            except Exception:
+                pass
             self.status_label.setText("✗ Source detection timed out (PipeWire issue)")
             self.status_label.setStyleSheet("color: #f44336; font-size: 11px;")
     
@@ -1490,7 +1493,7 @@ class MainWindow(QMainWindow):
             
             # Check for new game sources
             excluded_games = self.config.get_excluded_games()
-            auto_apply_enabled = self.settings.get('auto_apply_games', False)  # Default to False - require user action
+            auto_apply_enabled = self.settings.get('auto_apply_games', True)
             
             current_games = {s['name'] for s in current_sources if s['type'] == 'Game'}
             new_games = current_games - self.previously_detected_games - set(excluded_games)
@@ -1523,6 +1526,7 @@ class MainWindow(QMainWindow):
             return
         
         try:
+            self.pipewire._update_steam_node()
             steam_node_id = self.pipewire.steam_node_id
             if not steam_node_id:
                 logger.warning("Steam node not found, cannot auto-apply routing")
@@ -1652,6 +1656,24 @@ class MainWindow(QMainWindow):
         
         self.sources = sources
         self.update_sources_list()
+
+        import hashlib
+        self.last_sources_hash = hashlib.md5(
+            str(sorted([(s['id'], s['name']) for s in sources])).encode()
+        ).hexdigest()
+        self.previously_detected_games = {
+            s['name'] for s in sources if s.get('type') == 'Game'
+        }
+
+        # Games already running when the first scan finishes: auto-apply once (timer may not fire a "change")
+        if not self._startup_auto_apply_done and any(
+            s.get('type') == 'Game' for s in sources
+        ):
+            self._startup_auto_apply_done = True
+            if self.settings.get('auto_apply_games', True):
+                self.pipewire._update_steam_node()
+                if self.pipewire.steam_node_id and self.selected_sources:
+                    self._auto_apply_new_games()
         
         # Update status
         if sources:
@@ -1663,6 +1685,8 @@ class MainWindow(QMainWindow):
 
     def on_detection_error(self, error):
         """Handle detection error"""
+        if self.source_detection_timeout:
+            self.source_detection_timeout.stop()
         self.status_label.setText(f"✗ Error detecting sources: {error}")
         self.status_label.setStyleSheet("color: #f44336; font-size: 11px;")
 
@@ -1823,6 +1847,7 @@ class MainWindow(QMainWindow):
             return
 
         try:
+            self.pipewire._update_steam_node()
             steam_node_id = self.pipewire.steam_node_id
             if not steam_node_id:
                 QMessageBox.critical(
@@ -1863,7 +1888,7 @@ class MainWindow(QMainWindow):
                 f"Error: {e}\n\n"
                 f"Troubleshooting:\n"
                 f"• Verify PipeWire is running: systemctl --user status wireplumber\n"
-                f"• Check logs: ~/.cache/steam-pipewire-helper.log\n"
+                f"• Check logs: ~/.cache/steam-audio-isolator.log\n"
                 f"• Try running: pw-cli list-objects Node"
             )
 
@@ -2204,7 +2229,7 @@ class MainWindow(QMainWindow):
     
     def _update_routing_instructions(self):
         """Update routing instructions text based on auto-apply setting"""
-        auto_apply = self.settings.get('auto_apply_games', False)
+        auto_apply = self.settings.get('auto_apply_games', True)
         
         if auto_apply:
             text = (

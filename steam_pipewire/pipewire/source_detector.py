@@ -19,6 +19,21 @@ class SourceDetector:
         self._cache = None  # pw-dump cache
         self._cache_time = 0  # Timestamp of last cache
         self._cache_duration = 2  # Cache for 2 seconds
+        self._pw_dump_proc = None  # active pw-dump; kill from UI thread on watchdog (never QThread.terminate)
+
+    def abort_active_dump(self):
+        """Kill a stuck pw-dump subprocess (safe from GUI thread). Avoids QThread.terminate crashes."""
+        p = self._pw_dump_proc
+        if p is None or p.poll() is not None:
+            return
+        try:
+            p.kill()
+            p.wait(timeout=3)
+        except Exception:
+            try:
+                p.wait(timeout=1)
+            except Exception:
+                pass
 
     def get_audio_sources(self) -> List[Dict]:
         """Get all audio output sources using pw-dump with caching"""
@@ -38,25 +53,39 @@ class SourceDetector:
             
             logger.debug("Getting audio sources via pw-dump (not cached)...")
             start_time = time.time()
-            
-            # Use pw-dump with strict timeout
-            result = subprocess.run(
-                ['pw-dump'],
-                capture_output=True,
-                text=True,
-                timeout=2  # Subprocess timeout
-            )
-            
-            elapsed = time.time() - start_time
-            logger.debug(f"pw-dump completed in {elapsed:.2f}s, code: {result.returncode}")
 
-            if result.returncode != 0:
-                logger.error(f"pw-dump failed with code {result.returncode}")
+            stdout = ""
+            returncode = -1
+            try:
+                self._pw_dump_proc = subprocess.Popen(
+                    ['pw-dump'],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    encoding='utf-8',
+                    errors='replace',
+                )
+                try:
+                    stdout, _stderr = self._pw_dump_proc.communicate(timeout=2)
+                    returncode = self._pw_dump_proc.returncode
+                except subprocess.TimeoutExpired:
+                    logger.error("pw-dump timeout!")
+                    self.abort_active_dump()
+                    logger.debug("=== SOURCE DETECTION END ===")
+                    return []
+            finally:
+                self._pw_dump_proc = None
+
+            elapsed = time.time() - start_time
+            logger.debug(f"pw-dump completed in {elapsed:.2f}s, code: {returncode}")
+
+            if returncode != 0:
+                logger.error(f"pw-dump failed with code {returncode}")
                 logger.debug("=== SOURCE DETECTION END ===")
                 return []
 
             try:
-                data = json.loads(result.stdout)
+                data = json.loads(stdout)
                 logger.debug(f"Parsed JSON with {len(data)} objects")
             except json.JSONDecodeError as e:
                 logger.error(f"JSON parse error: {e}")
@@ -79,11 +108,7 @@ class SourceDetector:
             
             logger.debug("=== SOURCE DETECTION END ===")
             return sources
-            
-        except subprocess.TimeoutExpired:
-            logger.error("pw-dump timeout!")
-            logger.debug("=== SOURCE DETECTION END ===")
-            return []
+
         except Exception as e:
             logger.error(f"Error detecting sources: {e}", exc_info=True)
             logger.debug("=== SOURCE DETECTION END ===")
@@ -94,7 +119,8 @@ class SourceDetector:
         try:
             for node_id, node in self.node_map.items():
                 props = node.get('info', {}).get('props', {})
-                if props.get('application.name') == 'Steam':
+                an = (props.get('application.name') or '').strip().lower()
+                if an in ('steam', 'steam client'):
                     return {
                         'id': node_id,
                         'name': props.get('node.name', 'Steam'),
@@ -154,9 +180,9 @@ class SourceDetector:
                 if 'alsa_input' in node_name:
                     continue
                 
-                # Skip Steam's own recording node
-                app_name = props.get('application.name', '')
-                if app_name == 'Steam':
+                # Skip Steam's own recording node (match client variants)
+                app_name_skip = (props.get('application.name', '') or '').strip().lower()
+                if app_name_skip in ('steam', 'steam client'):
                     continue
 
                 source_type = self._determine_source_type(props)
@@ -287,7 +313,8 @@ class SourceDetector:
                 # Could be a game, check if it's from a game-like path
                 if any(x in app_binary for x in 
                       ['/steam/', '/steamapps/', '/games/', '/.steam/', 
-                       '/compatdata/', '/shadercache/']):
+                       '/compatdata/', '/shadercache/', '/.var/app/com.valvesoftware.steam',
+                       'flatpak/com.valvesoftware.steam']):
                     return 'Game'
         
         # 6. Check media.role property (some games set this)
