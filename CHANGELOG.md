@@ -5,6 +5,11 @@ All notable changes to Steam Audio Isolator will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.10] - 2026-03-28
+
+### Fixed
+- Auto-update “Restart to apply”: wait for the single-instance lock to release before copying and launching the new binary, so the updated app starts instead of exiting as a duplicate instance.
+
 ## [0.3.9] - 2026-03-28
 
 ### Added
