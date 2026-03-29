@@ -9,23 +9,33 @@ cd "$SCRIPT_DIR"
 echo "=== Steam Audio Isolator Release Builder ==="
 echo ""
 
-# Check if virtual environment exists
-if [ ! -d ".venv" ]; then
-    echo "Error: Virtual environment not found. Run: python -m venv .venv"
+VENV_PY="${SCRIPT_DIR}/.venv/bin/python"
+
+# Create venv if missing (Arch / PEP 668: never use system pip without a venv)
+if [ ! -x "$VENV_PY" ]; then
+    echo "Creating virtual environment (.venv)..."
+    if command -v python3 >/dev/null 2>&1; then
+        python3 -m venv "${SCRIPT_DIR}/.venv"
+    else
+        python -m venv "${SCRIPT_DIR}/.venv"
+    fi
+fi
+
+if [ ! -x "$VENV_PY" ]; then
+    echo "Error: Could not create or use .venv (missing $VENV_PY)"
     exit 1
 fi
 
-# Activate virtual environment
-source .venv/bin/activate
-
-# Install/upgrade PyInstaller
-echo "Installing PyInstaller..."
-pip install --upgrade pyinstaller
+# Always use venv interpreter so pip/PyInstaller never hit the system environment
+echo "Installing build dependencies into .venv..."
+"$VENV_PY" -m pip install --upgrade pip
+"$VENV_PY" -m pip install -r "${SCRIPT_DIR}/requirements.txt"
+"$VENV_PY" -m pip install --upgrade pyinstaller
 
 # Generate icons if they don't exist
 if [ ! -f "steam-audio-isolator-256.png" ]; then
     echo "Generating icons..."
-    python generate_icon.py
+    "$VENV_PY" generate_icon.py
 fi
 
 # Clean previous builds
@@ -35,7 +45,7 @@ rm -rf build/ dist/ steam_pipewire.spec
 # Build with PyInstaller
 echo ""
 echo "Building standalone executable..."
-pyinstaller --name="steam-audio-isolator" \
+"$VENV_PY" -m PyInstaller --name="steam-audio-isolator" \
     --onefile \
     --windowed \
     --icon=steam-audio-isolator-256.png \

@@ -1,1 +1,1 @@
-# Utility modules for Steam PipeWire Helper
+# Utility modules for Steam Audio Isolator

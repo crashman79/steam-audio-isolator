@@ -1,1 +1,1 @@
-"""UI components for Steam PipeWire Helper"""
+"""UI components for Steam Audio Isolator"""

@@ -35,6 +35,7 @@ if getattr(sys, "frozen", False):
 
 # --- Normal imports and startup ---
 import logging
+import traceback
 import fcntl
 from PyQt5.QtWidgets import QApplication, QMessageBox
 from PyQt5.QtCore import QTimer
@@ -58,6 +59,27 @@ logging.basicConfig(
     handlers=[file_handler, console_handler]
 )
 logger = logging.getLogger(__name__)
+
+
+def _install_excepthook():
+    """Log uncaught exceptions and show a dialog when a QApplication exists (desktop launches hide stderr)."""
+
+    def _hook(exc_type, exc_value, exc_tb):
+        logger.critical("Uncaught exception", exc_info=(exc_type, exc_value, exc_tb))
+        try:
+            app = QApplication.instance()
+            if app is not None:
+                QMessageBox.critical(
+                    None,
+                    "Steam Audio Isolator",
+                    f"Unexpected error:\n\n{exc_value}\n\n"
+                    f"Details were written to:\n{log_file}",
+                )
+        except Exception:
+            pass
+        sys.__excepthook__(exc_type, exc_value, exc_tb)
+
+    sys.excepthook = _hook
 
 
 def get_autostart_exec_path() -> str:
@@ -90,35 +112,51 @@ def acquire_lock():
 
 def main():
     """Launch the application"""
-    # Try to acquire exclusive lock
-    lock_file = acquire_lock()
-    if lock_file is None:
+    try:
+        # Try to acquire exclusive lock
+        lock_file = acquire_lock()
+        if lock_file is None:
+            app = QApplication(sys.argv)
+            QMessageBox.warning(
+                None,
+                "Steam Audio Isolator",
+                "Another instance of Steam Audio Isolator is already running."
+            )
+            sys.exit(1)
+
+        logger.info("="*60)
+        logger.info("Steam Audio Isolator starting up")
+        logger.info("="*60)
+
         app = QApplication(sys.argv)
-        QMessageBox.warning(
-            None,
-            "Steam Audio Isolator",
-            "Another instance of Steam Audio Isolator is already running."
-        )
+        _install_excepthook()
+        app.setApplicationName("Steam Audio Isolator")
+        app.setDesktopFileName("steam-audio-isolator.desktop")
+        exec_path = get_autostart_exec_path()
+        window = MainWindow(exec_path=exec_path)
+        config = ConfigManager()
+        start_minimized = config.get_setting('start_minimized_to_tray')
+        if start_minimized and window.tray_icon is not None and window.tray_icon.isVisible():
+            # Keep window hidden; only tray icon visible — show popup so user notices
+            QTimer.singleShot(800, window.show_tray_launch_notification)
+        else:
+            window.show()
+        QTimer.singleShot(300, window.maybe_prompt_install_once)
+        sys.exit(app.exec_())
+    except Exception as e:
+        logger.critical(f"Startup failed: {e}", exc_info=True)
+        try:
+            app = QApplication.instance()
+            if app is None:
+                app = QApplication(sys.argv)
+            QMessageBox.critical(
+                None,
+                "Steam Audio Isolator",
+                f"Could not start:\n\n{e}\n\nSee log:\n{log_file}",
+            )
+        except Exception:
+            traceback.print_exc()
         sys.exit(1)
-    
-    logger.info("="*60)
-    logger.info("Steam Audio Isolator starting up")
-    logger.info("="*60)
-    
-    app = QApplication(sys.argv)
-    app.setApplicationName("Steam Audio Isolator")
-    app.setDesktopFileName("steam-audio-isolator.desktop")
-    exec_path = get_autostart_exec_path()
-    window = MainWindow(exec_path=exec_path)
-    config = ConfigManager()
-    start_minimized = config.get_setting('start_minimized_to_tray')
-    if start_minimized and window.tray_icon is not None and window.tray_icon.isVisible():
-        # Keep window hidden; only tray icon visible — show popup so user notices
-        QTimer.singleShot(800, window.show_tray_launch_notification)
-    else:
-        window.show()
-    QTimer.singleShot(300, window.maybe_prompt_install_once)
-    sys.exit(app.exec_())
 
 
 if __name__ == '__main__':

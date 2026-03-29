@@ -14,6 +14,91 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
+def _audio_port_counts_by_node(data: list) -> dict:
+    """Map node id -> {'in': n, 'out': n} from pw-dump Port objects."""
+    counts: dict = {}
+    for item in data:
+        if item.get('type') != 'PipeWire:Interface:Port':
+            continue
+        props = item.get('info', {}).get('props', {})
+        try:
+            nid = int(props.get("node.id"))
+        except (TypeError, ValueError):
+            continue
+        direction = props.get("port.direction")
+        if direction not in ("in", "out"):
+            continue
+        if nid not in counts:
+            counts[nid] = {"in": 0, "out": 0}
+        counts[nid][direction] = counts[nid].get(direction, 0) + 1
+    return counts
+
+
+def find_steam_recording_node_id(data: list) -> Optional[int]:
+    """Pick Steam's game-recording node from a pw-dump graph.
+
+    Steam exposes multiple PipeWire nodes; routing needs one with **input** ports
+    (Stream/Input/Audio). The old logic took the first ``application.name`` match,
+    which is often wrong after client or PipeWire updates.
+    """
+    port_counts = _audio_port_counts_by_node(data)
+    scored = []
+
+    for node in data:
+        if node.get("type") != "PipeWire:Interface:Node":
+            continue
+        props = node.get("info", {}).get("props", {})
+        app_raw = (props.get("application.name") or "").strip()
+        app_l = app_raw.lower()
+        if app_l not in ("steam", "steam client"):
+            continue
+        bid = (props.get("application.process.binary") or "").lower()
+        if "steamwebhelper" in bid or "gameoverlayui" in bid:
+            continue
+        nid = node.get("id")
+        if nid is None:
+            continue
+        mc = props.get("media.class", "") or ""
+        ports = port_counts.get(nid, {"in": 0, "out": 0})
+        n_in, n_out = ports["in"], ports["out"]
+        score = 0
+        if "Stream/Input/Audio" in mc:
+            score += 200
+        elif "Stream/Output/Audio" in mc:
+            score += 40
+        score += min(n_in, 16) * 15
+        text = (
+            (props.get("node.description") or "")
+            + " "
+            + (props.get("node.name") or "")
+        ).lower()
+        if any(k in text for k in ("record", "capture", "game")):
+            score += 25
+        scored.append((score, n_in, nid, app_raw, mc))
+
+    if not scored:
+        return None
+
+    scored.sort(key=lambda t: (-t[0], -t[1], t[2]))
+    best_score, best_in, best_id, _, best_mc = scored[0]
+    if best_in == 0:
+        with_inputs = [t for t in scored if t[1] > 0]
+        if with_inputs:
+            with_inputs.sort(key=lambda t: (-t[0], -t[1], t[2]))
+            best_score, best_in, best_id, _, best_mc = with_inputs[0]
+            logger.debug(
+                "Steam node: preferring candidate with audio input ports (id=%s)",
+                best_id,
+            )
+    logger.debug(
+        "Selected Steam recording node id=%s score=%s media.class=%r",
+        best_id,
+        best_score,
+        best_mc,
+    )
+    return best_id
+
+
 def _get_available_ports(node_id: int, direction: str = "out") -> List[int]:
     """Get available ports for a node with specified direction
     
@@ -99,6 +184,7 @@ class PipeWireController:
 
     def _update_steam_node(self):
         """Find and cache Steam's recording node ID"""
+        self.steam_node_id = None
         try:
             result = subprocess.run(
                 ['pw-dump'],
@@ -108,14 +194,12 @@ class PipeWireController:
             )
             if result.returncode == 0:
                 data = json.loads(result.stdout)
-                for node in data:
-                    if node.get('type') == 'PipeWire:Interface:Node':
-                        props = node.get('info', {}).get('props', {})
-                        if props.get('application.name') == 'Steam':
-                            self.steam_node_id = node.get('id')
-                            logger.debug(f"Found Steam recording node: {self.steam_node_id}")
-                            return
-                logger.warning("Steam node not found - is Steam running?")
+                found = find_steam_recording_node_id(data)
+                if found is not None:
+                    self.steam_node_id = found
+                    logger.debug(f"Found Steam recording node: {self.steam_node_id}")
+                    return
+                logger.warning("Steam node not found - is Steam running with Game Recording?")
         except subprocess.TimeoutExpired:
             logger.error("Timeout finding Steam node")
         except Exception as e:
@@ -357,6 +441,8 @@ class PipeWireController:
         """
         try:
             logger.debug(f"\n=== ROUTING DEBUG START ===")
+            self._update_steam_node()
+            target_node_id = self.steam_node_id
             logger.debug(f"Target Steam node ID: {target_node_id}")
             logger.debug(f"Source node IDs: {source_ids}")
             
@@ -590,6 +676,7 @@ class PipeWireController:
             logger.info(f"Using sink: {sink_node_name} (node {sink_node_id})")
             
             # Get Steam's recording node ID
+            self._update_steam_node()
             steam_id = self.steam_node_id
             if not steam_id:
                 logger.warning("Steam recording node not found")

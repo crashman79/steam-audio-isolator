@@ -69,6 +69,8 @@ class ThemeManager:
     @staticmethod
     def apply_theme(app: QApplication, theme: Theme):
         """Apply theme to the application"""
+        if app is None:
+            return
         if theme == Theme.SYSTEM:
             theme = ThemeManager.get_system_theme()
         
