@@ -59,15 +59,12 @@ This results in cluttered recordings with unwanted sounds mixing into your gamep
 - 💾 **Profile Management** - Save and load routing configurations for quick switching
 
 ### User Interface
-- 📊 **Routes Visualization Diagram** - See your audio routing connections in real-time
-  - 2-column grid layout with source icons and numbered badges
-  - Curved connection lines to Steam Game Recording
-  - Real-time updates as you apply/clear routes
+- 📊 **Current Routes table** - Active PipeWire links to Steam recording (auto-refreshed on the same interval as source detection)
 - 🪟 **System Tray Integration** - Minimize to tray with custom cyan icon
 - 🔄 **Real-Time Updates** - Auto-detects new audio sources every 3 seconds
 - 📋 **Tabbed Interface**:
   - Audio Routing (source selection)
-  - Current Routes (active connections with diagram)
+  - Current Routes (active links table)
   - System Info (node IDs and properties)
   - Settings (behavior configuration)
   - Profiles (save/load configurations)
@@ -96,7 +93,7 @@ This results in cluttered recordings with unwanted sounds mixing into your gamep
 
 <p align="center">
   <img src="screenshots/settings window.png" alt="Settings Window" width="800">
-  <br><em>Settings panel with icon cache management - preload and cache all 83 installed Steam games</em>
+  <br><em>Settings panel (appearance, tray, autostart, auto-detect interval)</em>
 </p>
 
 <details>
@@ -192,13 +189,8 @@ which pw-dump pw-cli
 - **Status**: Shows total sources found and current selection
 
 ### Current Routes Tab
-- **Routes Visualization Diagram**: 
-  - Grid layout showing your audio sources
-  - Real-time connection lines to Steam Game Recording
-  - Numbered badges (#1, #2, etc.) for multiple sources
-  - Source icons extracted from game/app binaries
-- **Routes List**: Text listing of all active connections
-- **Refresh Routes Button**: Update the display if routes change externally
+- **Table**: Source name, node ID, channel, and link ID for each active route to Steam recording
+- **Auto-refresh**: Same interval as **Source Auto-Detection** in Settings (plus **Refresh now** if you want an immediate update)
 
 ### System Info Tab
 - **Node IDs and Details**: Shows node IDs, names, and properties for debugging
@@ -216,7 +208,6 @@ which pw-dump pw-cli
 - **Add to application menu**: App writes `~/.local/share/applications/` desktop entry (copies binary to `~/.local/bin` when enabling)
 - **Copy to ~/.local/bin**: One-click install of the binary to a PATH-friendly location (standalone binary only). On first run from elsewhere, the app can prompt to do this once.
 - **Theme**: Light, dark, or system
-- **Icon cache**: Preload or clear cached game/app icons
 
 ### Profiles Tab
 - **Save Profile**: Create a named profile with your current routing selection
@@ -248,7 +239,7 @@ When you click "Apply Routing":
 2. Removes any existing audio sink → Steam connections (to prevent double-recording)
 3. Creates direct **game audio → Steam** connections using `pw-cli create-link`
 4. System audio continues to speakers normally
-5. Updates the visualization diagram in real-time
+5. The Current Routes table updates on the next poll (or use **Refresh now**)
 
 ### Cleanup
 When you click "Clear All Routes":
@@ -306,8 +297,7 @@ pw-cli list-objects Link             # View active connections
 └── steam-audio-isolator            # Optional: copy created when enabling menu/autostart or via Settings
 
 ~/.cache/steam-audio-isolator/
-├── icons/                          # Cached app/game icons
-└── (log in parent .cache) steam-audio-isolator.log
+└── steam-audio-isolator.log
 ```
 
 ---
