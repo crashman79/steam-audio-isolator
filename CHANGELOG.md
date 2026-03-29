@@ -5,6 +5,25 @@ All notable changes to Steam Audio Isolator will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.9] - 2026-03-28
+
+### Added
+- Tray notification when auto-routing succeeds or fails (includes game names)
+- `run-build.sh`: clean build and run the onefile binary
+- Current Routes tab: table of active links (source, node, channel, link id) with periodic refresh (same interval as source auto-detect) and Refresh now
+
+### Changed
+- Steam recording node: pick the correct PipeWire node (input ports / Stream/Input) instead of the first `application.name` match; refresh before routing
+- Auto-apply: startup path when games already running; align `auto_apply_games` default with settings; status text fixes
+- Game detection: FMOD/Wwise middleware, `steamapps/common/` paths, clearer labels from process binary when FMOD hides the title
+- Main window: center on work area under cursor (multi-monitor); smaller default size and resizable width (no wide graph minimum)
+- `build.sh`: create/use `.venv` and `python -m pip` for Arch/PEP 668
+- README: match routes table and settings (no icon cache)
+
+### Removed
+- Routes diagram / game icons in Current Routes
+- Icon cache (`IconCache`), Settings preload/clear cache controls, and `~/.cache/.../icons` usage
+
 ## [0.3.8] - 2025-03-17
 
 ### Fixed

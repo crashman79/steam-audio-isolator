@@ -6,13 +6,12 @@ from PyQt5.QtWidgets import (
     QPushButton, QLabel, QCheckBox, QScrollArea, QGroupBox,
     QFileDialog, QMessageBox, QComboBox, QListWidget, QListWidgetItem,
     QTabWidget, QTextEdit, QSpinBox, QLineEdit, QSystemTrayIcon, QMenu, QAction,
-    QGraphicsView, QGraphicsScene, QGraphicsRectItem, QGraphicsLineItem, QGraphicsTextItem,
-    QGraphicsPathItem, QGraphicsPixmapItem, QGraphicsEllipseItem, QGraphicsPolygonItem, QApplication
+    QApplication, QSizePolicy, QTableWidget, QTableWidgetItem, QHeaderView,
 )
-from PyQt5.QtCore import Qt, QThread, pyqtSignal, QVariant, QTimer, QPointF, QRectF, QSize, QMimeData
+from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
 from PyQt5.QtGui import (
     QColor, QFont, QKeySequence, QIcon, QPixmap, QPainter, QPen, QBrush, QPainterPath,
-    QPolygonF, QGuiApplication, QCursor,
+    QGuiApplication, QCursor,
 )
 from pathlib import Path
 import os
@@ -20,228 +19,6 @@ from steam_pipewire.pipewire.source_detector import SourceDetector
 from steam_pipewire.pipewire.controller import PipeWireController
 from steam_pipewire.utils.config import ConfigManager
 from steam_pipewire.ui.theme import ThemeManager, Theme
-
-
-class IconCache:
-    """Cache for game and application icons with persistent disk cache"""
-    _instance = None
-    _cache = {}  # Memory cache
-    _cache_dir = Path.home() / '.cache' / 'steam-audio-isolator' / 'icons'
-    _steam_appname_to_id = {}  # Map game names to Steam app IDs
-    
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._cache_dir.mkdir(parents=True, exist_ok=True)
-            cls._load_steam_app_mapping()
-        return cls._instance
-    
-    @classmethod
-    def _load_steam_app_mapping(cls):
-        """Build mapping of game names to Steam app IDs from app manifests"""
-        import re
-        
-        # First, find all Steam library locations from libraryfolders.vdf
-        steam_library_paths = []
-        libraryfolders_paths = [
-            Path.home() / '.steam' / 'steam' / 'steamapps' / 'libraryfolders.vdf',
-            Path.home() / '.local' / 'share' / 'Steam' / 'steamapps' / 'libraryfolders.vdf'
-        ]
-        
-        for vdf_path in libraryfolders_paths:
-            if not vdf_path.exists():
-                continue
-            
-            try:
-                with open(vdf_path, 'r', encoding='utf-8', errors='ignore') as f:
-                    content = f.read()
-                    # Extract library paths: "path" "/path/to/library"
-                    for match in re.finditer(r'"path"\s+"([^"]+)"', content):
-                        lib_path = Path(match.group(1))
-                        if lib_path.exists():
-                            steam_library_paths.append(lib_path)
-            except Exception:
-                pass
-        
-        # Fallback to default locations if no libraries found
-        if not steam_library_paths:
-            steam_library_paths = [
-                Path.home() / '.steam' / 'steam',
-                Path.home() / '.local' / 'share' / 'Steam'
-            ]
-        
-        # Scan all app manifests in all libraries
-        for lib_path in steam_library_paths:
-            steamapps = lib_path / 'steamapps'
-            if not steamapps.exists():
-                continue
-            
-            for manifest in steamapps.glob('appmanifest_*.acf'):
-                try:
-                    with open(manifest, 'r', encoding='utf-8', errors='ignore') as f:
-                        content = f.read()
-                        # Extract app ID from filename: appmanifest_513710.acf
-                        app_id = manifest.stem.split('_')[1]
-                        # Extract name: "name" "SCUM"
-                        name_match = re.search(r'"name"\s+"([^"]+)"', content)
-                        if name_match:
-                            app_name = name_match.group(1).lower()
-                            cls._steam_appname_to_id[app_name] = app_id
-                except Exception:
-                    pass
-    
-    def get_icon(self, app_name: str, size: int = 32) -> QPixmap:
-        """Get icon for an application, with fallback to default"""
-        cache_key = f"{app_name}_{size}"
-        
-        # Check memory cache first
-        if cache_key in self._cache:
-            return self._cache[cache_key]
-        
-        # Check disk cache
-        disk_cache_file = self._cache_dir / f"{cache_key.replace('/', '_')}.png"
-        if disk_cache_file.exists():
-            pixmap = QPixmap(str(disk_cache_file))
-            if not pixmap.isNull():
-                self._cache[cache_key] = pixmap
-                return pixmap
-        
-        # Fetch icon
-        pixmap = self._try_get_icon(app_name, size)
-        self._cache[cache_key] = pixmap
-        
-        # Save to disk cache (only if not a generated icon)
-        if not pixmap.isNull() and hasattr(pixmap, 'cacheKey'):
-            try:
-                pixmap.save(str(disk_cache_file), 'PNG')
-            except Exception:
-                pass
-        
-        return pixmap
-    
-    def _try_get_icon(self, app_name: str, size: int) -> QPixmap:
-        """Try multiple sources to get an icon"""
-        # First, try Qt icon theme (for system apps like Steam, browsers)
-        qt_icon = QIcon.fromTheme(app_name.lower())
-        if not qt_icon.isNull():
-            pixmap = qt_icon.pixmap(size, size)
-            if not pixmap.isNull():
-                return pixmap
-        
-        # For Steam games, search Steam's library cache
-        steam_icon = self._get_steam_game_icon(app_name, size)
-        if not steam_icon.isNull():
-            return steam_icon
-        
-        # Return default colored pixmap
-        return self._create_default_icon(app_name, size)
-    
-    def _get_steam_game_icon(self, app_name: str, size: int) -> QPixmap:
-        """Try to get icon from Steam library cache using app name to ID mapping"""
-        steam_dirs = [
-            Path.home() / '.steam' / 'steam' / 'appcache' / 'librarycache',
-            Path.home() / '.local' / 'share' / 'Steam' / 'appcache' / 'librarycache'
-        ]
-        
-        # Try to find app ID from name
-        app_name_lower = app_name.lower().split('(')[0].strip()  # Remove any "(audio stream #X)"
-        app_id = self._steam_appname_to_id.get(app_name_lower)
-        
-        for steam_dir in steam_dirs:
-            if not steam_dir.exists():
-                continue
-            
-            # If we have an app ID, look for that specific icon
-            if app_id:
-                # New Steam format: hash-based directories with logo.png
-                app_dir = steam_dir / app_id
-                if app_dir.exists():
-                    # Try logo.png in the app directory
-                    logo_file = app_dir / 'logo.png'
-                    if logo_file.exists():
-                        pm = QPixmap(str(logo_file))
-                        if not pm.isNull():
-                            return pm.scaledToWidth(size, Qt.SmoothTransformation)
-                    
-                    # Try any .jpg files in the app directory
-                    for icon_file in app_dir.glob('*.jpg'):
-                        pm = QPixmap(str(icon_file))
-                        if not pm.isNull():
-                            return pm.scaledToWidth(size, Qt.SmoothTransformation)
-                
-                # Old Steam format: appid_icon.jpg in root cache directory
-                icon_file = steam_dir / f'{app_id}_icon.jpg'
-                if icon_file.exists():
-                    pm = QPixmap(str(icon_file))
-                    if not pm.isNull():
-                        return pm.scaledToWidth(size, Qt.SmoothTransformation)
-                
-                # Try library card as fallback
-                library_file = steam_dir / f'{app_id}_library_600x900.jpg'
-                if library_file.exists():
-                    pm = QPixmap(str(library_file))
-                    if not pm.isNull():
-                        return pm.scaledToWidth(size, Qt.SmoothTransformation)
-            
-            # Fallback: scan all icon files (for games we couldn't map)
-            for icon_file in steam_dir.glob('*_icon.jpg'):
-                pm = QPixmap(str(icon_file))
-                if not pm.isNull():
-                    return pm.scaledToWidth(size, Qt.SmoothTransformation)
-        
-        return QPixmap()
-    
-    def _get_desktop_icon(self, app_name: str, size: int) -> QPixmap:
-        """Try to get icon from .desktop files"""
-        desktop_dirs = [
-            '/usr/share/applications',
-            f'{Path.home()}/.local/share/applications'
-        ]
-        
-        search_term = app_name.lower().split()[0]
-        
-        for desktop_dir in desktop_dirs:
-            if not Path(desktop_dir).exists():
-                continue
-            
-            for desktop_file in Path(desktop_dir).glob('*.desktop'):
-                if search_term in desktop_file.stem.lower():
-                    try:
-                        with open(desktop_file, 'r') as f:
-                            content = f.read()
-                            # Look for Icon= line
-                            for line in content.split('\n'):
-                                if line.startswith('Icon='):
-                                    icon_name = line.split('=', 1)[1].strip()
-                                    pm = QPixmap(icon_name)
-                                    if not pm.isNull():
-                                        return pm.scaledToWidth(size, Qt.SmoothTransformation)
-                    except:
-                        pass
-        
-        return QPixmap()
-    
-    def _create_default_icon(self, app_name: str, size: int) -> QPixmap:
-        """Create a default colored icon with initials"""
-        pm = QPixmap(size, size)
-        
-        # Color based on app name hash
-        colors = [
-            QColor("#FF6B6B"), QColor("#4ECDC4"), QColor("#45B7D1"),
-            QColor("#F7B731"), QColor("#5F27CD"), QColor("#00D2D3")
-        ]
-        color = colors[hash(app_name) % len(colors)]
-        
-        pm.fill(color)
-        
-        # Draw first letter
-        painter = QPainter(pm)
-        painter.setFont(QFont("Arial", int(size * 0.6), QFont.Bold))
-        painter.setPen(QColor("white"))
-        painter.drawText(pm.rect(), Qt.AlignCenter, app_name[0].upper())
-        painter.end()
-        
-        return pm
 
 
 class SourceDetectorThread(QThread):
@@ -443,41 +220,7 @@ class SettingsDialog(QWidget):
         tray_layout.addWidget(self.copy_bin_status)
         tray_group.setLayout(tray_layout)
         right.addWidget(tray_group)
-        
-        # Icon cache management
-        cache_group = QGroupBox("Icon Cache Management")
-        cache_layout = QVBoxLayout()
-        
-        # Cache info
-        cache_info_label = QLabel("Manage cached icons for Steam games and applications.")
-        cache_layout.addWidget(cache_info_label)
-        
-        # Status label
-        self.cache_status_label = QLabel("")
-        self.cache_status_label.setWordWrap(True)
-        cache_layout.addWidget(self.cache_status_label)
-        
-        # Buttons
-        btn_layout = QHBoxLayout()
-        
-        self.preload_btn = QPushButton("Preload All Game Icons")
-        self.preload_btn.setToolTip("Scan all installed Steam games and cache their icons")
-        self.preload_btn.clicked.connect(self._preload_icons)
-        btn_layout.addWidget(self.preload_btn)
-        
-        self.clear_cache_btn = QPushButton("Clear Icon Cache")
-        self.clear_cache_btn.setToolTip("Delete all cached icons (they will be re-fetched as needed)")
-        self.clear_cache_btn.clicked.connect(self._clear_icon_cache)
-        btn_layout.addWidget(self.clear_cache_btn)
-        
-        btn_layout.addStretch()
-        cache_layout.addLayout(btn_layout)
-        
-        cache_group.setLayout(cache_layout)
-        right.addWidget(cache_group)
         right.addStretch()
-        
-        self._update_cache_status()
         
         columns.addLayout(left, 1)
         columns.addLayout(right, 1)
@@ -541,31 +284,6 @@ class SettingsDialog(QWidget):
         theme = Theme[theme_str] if theme_str in Theme.__members__ else Theme.SYSTEM
         ThemeManager.apply_theme(QApplication.instance(), theme)
     
-    def _update_cache_status(self):
-        """Update the cache status label with current icon cache info"""
-        icon_cache = IconCache()
-        cache_dir = icon_cache._cache_dir
-        
-        if not cache_dir.exists():
-            self.cache_status_label.setText("Cache: Empty (no cached icons)")
-            return
-        
-        # Count cached files
-        cached_files = list(cache_dir.glob('*.png'))
-        cache_size = sum(f.stat().st_size for f in cached_files)
-        
-        # Format size
-        if cache_size < 1024:
-            size_str = f"{cache_size} bytes"
-        elif cache_size < 1024 * 1024:
-            size_str = f"{cache_size / 1024:.1f} KB"
-        else:
-            size_str = f"{cache_size / (1024 * 1024):.1f} MB"
-        
-        self.cache_status_label.setText(
-            f"Cache: {len(cached_files)} icon(s) cached, {size_str} total"
-        )
-    
     def _on_copy_to_local_bin(self):
         """Copy the running binary to ~/.local/bin (standalone binary only)."""
         ok, msg = self.config.install_to_local_bin()
@@ -574,126 +292,6 @@ class SettingsDialog(QWidget):
             QMessageBox.information(self, "Installed", f"{msg}\n\nYou can run the app with: steam-audio-isolator")
         else:
             QMessageBox.warning(self, "Copy to ~/.local/bin", msg)
-
-    def _preload_icons(self):
-        """Preload all Steam game icons"""
-        from PyQt5.QtWidgets import QProgressDialog, QMessageBox
-        from PyQt5.QtCore import Qt
-        import logging
-        
-        logger = logging.getLogger(__name__)
-        
-        try:
-            icon_cache = IconCache()
-            
-            # Get all Steam app mappings
-            app_count = len(icon_cache._steam_appname_to_id)
-            
-            if app_count == 0:
-                self.cache_status_label.setText("No Steam games found to cache.")
-                return
-            
-            # Show progress dialog
-            progress = QProgressDialog(
-                "Caching Steam game icons...",
-                "Cancel",
-                0,
-                app_count,
-                self
-            )
-            progress.setWindowModality(Qt.WindowModal)
-            progress.setWindowTitle("Preloading Icons")
-            progress.setMinimumDuration(0)
-            
-            cached_count = 0
-            
-            for i, (app_name, app_id) in enumerate(icon_cache._steam_appname_to_id.items()):
-                if progress.wasCanceled():
-                    break
-                
-                progress.setValue(i)
-                progress.setLabelText(f"Caching: {app_name}...")
-                QApplication.processEvents()
-                
-                try:
-                    # Fetch icon for this game (will cache it)
-                    pixmap = icon_cache.get_icon(app_name, 64)
-                    if not pixmap.isNull():
-                        cached_count += 1
-                        logger.debug(f"Cached icon for {app_name} (app ID: {app_id})")
-                except Exception as e:
-                    logger.warning(f"Failed to cache icon for {app_name}: {e}")
-            
-            progress.setValue(app_count)
-            progress.close()
-            
-            self._update_cache_status()
-            self.cache_status_label.setText(
-                f"Cached {cached_count} of {app_count} game icon(s). "
-                f"{self.cache_status_label.text()}"
-            )
-            
-            logger.info(f"Icon preload complete: {cached_count}/{app_count} games cached")
-            
-        except Exception as e:
-            logger.error(f"Error preloading icons: {e}", exc_info=True)
-            QMessageBox.warning(
-                self,
-                "Error",
-                f"Failed to preload icons: {str(e)}"
-            )
-    
-    def _clear_icon_cache(self):
-        """Clear all cached icons"""
-        from PyQt5.QtWidgets import QMessageBox
-        import logging
-        
-        logger = logging.getLogger(__name__)
-        
-        try:
-            icon_cache = IconCache()
-            cache_dir = icon_cache._cache_dir
-            
-            # Confirm deletion
-            reply = QMessageBox.question(
-                self,
-                "Clear Icon Cache",
-                "Are you sure you want to clear all cached icons?\n\n"
-                "Icons will be re-fetched as needed when games are detected.",
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.No
-            )
-            
-            if reply != QMessageBox.Yes:
-                return
-            
-            # Clear memory cache
-            icon_cache._cache.clear()
-            
-            # Delete cached files
-            deleted_count = 0
-            if cache_dir.exists():
-                for cache_file in cache_dir.glob('*.png'):
-                    try:
-                        cache_file.unlink()
-                        deleted_count += 1
-                    except Exception as e:
-                        logger.warning(f"Failed to delete {cache_file}: {e}")
-            
-            self._update_cache_status()
-            self.cache_status_label.setText(f"Cleared {deleted_count} cached icon(s).")
-            logger.info(f"Icon cache cleared: {deleted_count} files deleted")
-            
-        except Exception as e:
-            logger.error(f"Error clearing icon cache: {e}", exc_info=True)
-            QMessageBox.warning(
-                self,
-                "Error",
-                f"Failed to clear icon cache: {str(e)}"
-            )
-        
-        # Show confirmation
-        QMessageBox.information(self, "Success", "Settings saved successfully!")
     
     def get_settings(self):
         """Get current settings"""
@@ -707,7 +305,8 @@ class MainWindow(QMainWindow):
         super().__init__()
         self._exec_path = exec_path or ""
         self.setWindowTitle("Steam Audio Isolator")
-        self.resize(900, 750)
+        self.resize(780, 700)
+        self.setMinimumSize(440, 380)
 
         self.pipewire = PipeWireController()
         self.config = ConfigManager()
@@ -719,6 +318,8 @@ class MainWindow(QMainWindow):
         self.auto_detect_timer = None  # Timer for auto-detect polling
         self.previously_detected_games = set()  # Track game sources for auto-apply
         self._startup_auto_apply_done = False  # One-shot apply when games exist on first scan
+        self.routes_poll_timer = None
+        self.route_update_thread = None
         
         # Load settings
         self.settings = self.config.load_settings()
@@ -740,6 +341,7 @@ class MainWindow(QMainWindow):
         self._center_on_work_area()
         self.detect_sources()
         self.start_auto_detect()
+        self.start_routes_poll()
 
     def _center_on_work_area(self):
         """Multi-monitor: (100,100) is arbitrary global coords and often lands on the wrong display."""
@@ -1012,14 +614,6 @@ class MainWindow(QMainWindow):
                 logger.warning(f"Failed to save icon to {path}")
         return icon_256_path
 
-    def _update_graphics_view_theme(self):
-        """Update graphics view background color based on current theme"""
-        theme_str = self.settings.get('theme', 'system').upper()
-        theme = Theme[theme_str] if theme_str in Theme.__members__ else Theme.SYSTEM
-        colors = ThemeManager.get_colors(theme)
-        graphics_bg = colors.get('graphics_bg', '#2b2b2b')
-        self.routes_graphics_view.setStyleSheet(f"QGraphicsView {{ background-color: {graphics_bg}; }}")
-
     def tray_icon_activated(self, reason):
         """Handle tray icon activation"""
         if reason == QSystemTrayIcon.Trigger:
@@ -1134,25 +728,40 @@ class MainWindow(QMainWindow):
         widget = QWidget()
         layout = QVBoxLayout()
 
-        layout.addWidget(QLabel("Currently connected audio routes to Steam:"))
+        intro = QLabel(
+            "Direct links from sources → Steam game recording input. "
+            "This table refreshes automatically (same interval as source detection in Settings)."
+        )
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
 
-        # Visual graph view with dark background
-        self.routes_graphics_view = QGraphicsView()
-        self.routes_scene = QGraphicsScene()
-        self.routes_graphics_view.setScene(self.routes_scene)
-        # Set background color based on theme
-        self._update_graphics_view_theme()
-        self.routes_graphics_view.setMinimumHeight(300)
-        self.routes_graphics_view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.routes_graphics_view.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        layout.addWidget(self.routes_graphics_view)
+        self.routes_status_label = QLabel("—")
+        self.routes_status_label.setStyleSheet("color: #666; font-size: 11px;")
+        layout.addWidget(self.routes_status_label)
 
-        # List view below
-        self.routes_list = QListWidget()
-        self.routes_list.setMaximumHeight(150)
-        layout.addWidget(self.routes_list)
+        self.routes_table = QTableWidget(0, 4)
+        self.routes_table.setHorizontalHeaderLabels(
+            ["Source", "Node ID", "Channel", "Link ID"]
+        )
+        self.routes_table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.Stretch
+        )
+        for col in (1, 2, 3):
+            self.routes_table.horizontalHeader().setSectionResizeMode(
+                col, QHeaderView.ResizeToContents
+            )
+        self.routes_table.verticalHeader().setVisible(False)
+        self.routes_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.routes_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.routes_table.setAlternatingRowColors(True)
+        self.routes_table.setMinimumHeight(180)
+        self.routes_table.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.Expanding
+        )
+        layout.addWidget(self.routes_table)
 
-        refresh_routes_btn = QPushButton("Refresh Routes")
+        refresh_routes_btn = QPushButton("Refresh now")
+        refresh_routes_btn.setToolTip("Routes also update on the polling timer.")
         refresh_routes_btn.clicked.connect(self.update_current_routes)
         layout.addWidget(refresh_routes_btn)
 
@@ -1354,7 +963,7 @@ class MainWindow(QMainWindow):
             "<ol>"
             "<li><b>Audio Routing Tab:</b> Check the games you want to record</li>"
             "<li>Click <b>Apply Routing</b> to create direct connections</li>"
-            "<li><b>Current Routes Tab:</b> View active audio routes</li>"
+            "<li><b>Current Routes Tab:</b> Table of active links to Steam (auto-refreshed)</li>"
             "<li><b>Profiles Tab:</b> Save/load routing configurations</li>"
             "<li><b>Settings Tab:</b> Configure behavior and preferences</li>"
             "</ol>"
@@ -1537,6 +1146,19 @@ class MainWindow(QMainWindow):
         self.auto_detect_timer.timeout.connect(self._check_for_source_changes)
         self.auto_detect_timer.start(int(interval_ms))
         logger.debug(f"Auto-detect polling started ({interval_ms/1000}s interval)")
+
+    def start_routes_poll(self):
+        """Periodically refresh PipeWire→Steam links (same interval as source auto-detect)."""
+        import logging
+        logger = logging.getLogger(__name__)
+        interval_ms = max(1, self.settings.get('auto_detect_interval', 3)) * 1000
+        if self.routes_poll_timer:
+            self.routes_poll_timer.stop()
+        self.routes_poll_timer = QTimer(self)
+        self.routes_poll_timer.timeout.connect(self.update_current_routes)
+        self.routes_poll_timer.start(int(interval_ms))
+        logger.debug(f"Routes poll started ({interval_ms/1000}s)")
+        self.update_current_routes()
     
     def _check_for_source_changes(self):
         """Periodically check if sources have changed"""
@@ -1723,6 +1345,8 @@ class MainWindow(QMainWindow):
         # Stop auto-detect timer
         if self.auto_detect_timer:
             self.auto_detect_timer.stop()
+        if self.routes_poll_timer:
+            self.routes_poll_timer.stop()
         
         # Check if restore on close is enabled
         if restore_on_close:
@@ -1982,7 +1606,12 @@ class MainWindow(QMainWindow):
             success, message = self.pipewire.create_audio_routing(selected_source_ids, steam_node_id)
             
             if success:
-                QMessageBox.information(self, "Success", f"Audio routing applied!\n{message}\n\nSwitch to 'Current Routes' tab and click Refresh to verify.")
+                QMessageBox.information(
+                    self,
+                    "Success",
+                    f"Audio routing applied!\n{message}\n\n"
+                    "The Current Routes tab updates automatically; open it to verify.",
+                )
             else:
                 QMessageBox.warning(self, "Partial Success", f"Some routes may have failed.\n{message}")
             
@@ -2036,10 +1665,12 @@ class MainWindow(QMainWindow):
                 )
 
     def update_current_routes(self):
-        """Update the list of current routes (background thread)"""
-        self.routes_list.clear()
-        self.routes_list.addItem("Loading routes...")
-        
+        """Refresh routes in a worker thread (timer + manual)."""
+        if self.route_update_thread and self.route_update_thread.isRunning():
+            return
+        if hasattr(self, "routes_status_label"):
+            self.routes_status_label.setText("Refreshing…")
+
         self.route_update_thread = RouteRefreshThread(self.pipewire)
         self.route_update_thread.routes_updated.connect(self.on_routes_updated)
         self.route_update_thread.error_occurred.connect(self.on_route_error)
@@ -2047,242 +1678,43 @@ class MainWindow(QMainWindow):
 
     def on_routes_updated(self, routes):
         """Handle updated routes"""
-        self.routes_list.clear()
-        
+        from datetime import datetime
+
+        ts = datetime.now().strftime("%H:%M:%S")
         if not routes:
-            item = QListWidgetItem("No active routes")
-            item.setForeground(QColor("gray"))
-            self.routes_list.addItem(item)
-            # Clear the visual graph
-            self.routes_scene.clear()
-        else:
-            for route in routes:
-                channel = route.get('channel', 'Unknown')
-                item_text = f"[Node {route['source_node_id']}] {route['source_name']} → Steam ({channel})"
-                item = QListWidgetItem(item_text)
-                item.setData(Qt.ItemDataRole.UserRole, QVariant(route['link_id']))
-                self.routes_list.addItem(item)
-            
-            # Draw the visual graph
-            self.draw_routes_graph(routes)
+            self.routes_table.setRowCount(0)
+            self.routes_status_label.setText(
+                f"{ts} — No active routes to Steam recording."
+            )
+            self.routes_status_label.setStyleSheet("color: #888; font-size: 11px;")
+            return
+
+        self.routes_table.setUpdatesEnabled(False)
+        self.routes_table.setRowCount(len(routes))
+        for row, route in enumerate(routes):
+            self.routes_table.setItem(
+                row, 0, QTableWidgetItem(str(route.get("source_name", "")))
+            )
+            self.routes_table.setItem(
+                row, 1, QTableWidgetItem(str(route.get("source_node_id", "")))
+            )
+            self.routes_table.setItem(
+                row, 2, QTableWidgetItem(str(route.get("channel", "")))
+            )
+            self.routes_table.setItem(
+                row, 3, QTableWidgetItem(str(route.get("link_id", "")))
+            )
+        self.routes_table.setUpdatesEnabled(True)
+        self.routes_status_label.setText(
+            f"{ts} — {len(routes)} link(s) to Steam recording"
+        )
+        self.routes_status_label.setStyleSheet("color: #666; font-size: 11px;")
 
     def on_route_error(self, error):
         """Handle route update error"""
-        self.routes_list.clear()
-        item = QListWidgetItem(f"Error loading routes: {error}")
-        item.setForeground(QColor("red"))
-        self.routes_list.addItem(item)
-        self.routes_scene.clear()
-
-    def draw_routes_graph(self, routes):
-        """Draw audio routes with centered Steam and sources on both sides"""
-        self.routes_scene.clear()
-        
-        # Centered layout dimensions
-        margin = 20
-        icon_size = 64
-        box_padding = 15
-        source_spacing = 100
-        horizontal_gap = 200  # Gap between sources and Steam
-        
-        # Maximum 12 sources
-        MAX_SOURCES = 12
-        
-        icon_cache = IconCache()
-        
-        # Group routes by source
-        sources = {}
-        for route in routes:
-            source_id = route['source_node_id']
-            if source_id not in sources:
-                sources[source_id] = {
-                    'name': route['source_name'],
-                    'routes': []
-                }
-            sources[source_id]['routes'].append(route)
-        
-        source_list = list(sources.items())[:MAX_SOURCES]
-        
-        if not source_list:
-            return
-        
-        num_sources = len(source_list)
-        
-        # Box dimensions
-        box_width = 400
-        box_height = icon_size + box_padding * 2
-        
-        # Steam box in center
-        steam_box_width = 300
-        steam_box_height = 120
-        
-        # Calculate total width to center everything
-        total_width = box_width + horizontal_gap + steam_box_width + horizontal_gap + box_width
-        view_center_x = total_width / 2
-        
-        # Position Steam in the center
-        steam_x = view_center_x - steam_box_width / 2
-        
-        # Calculate vertical centering
-        total_sources_height = (num_sources - 1) * source_spacing
-        steam_y = margin + total_sources_height / 2
-        steam_box_y = steam_y - steam_box_height / 2
-        
-        # Draw Steam box in center
-        steam_rect = QGraphicsRectItem(steam_x, steam_box_y, steam_box_width, steam_box_height)
-        steam_rect.setBrush(QBrush(QColor("#1a252f")))
-        steam_rect.setPen(QPen(QColor("#e74c3c"), 4))
-        self.routes_scene.addItem(steam_rect)
-        
-        # Steam icon
-        steam_icon_size = 75
-        steam_icon_x = steam_x + (steam_box_width - steam_icon_size) / 2
-        steam_icon_y = steam_box_y + 15
-        
-        steam_icon_pixmap = icon_cache.get_icon("Steam", steam_icon_size)
-        if not steam_icon_pixmap.isNull():
-            steam_icon_item = QGraphicsPixmapItem(steam_icon_pixmap)
-            steam_icon_item.setPos(steam_icon_x, steam_icon_y)
-            self.routes_scene.addItem(steam_icon_item)
-        
-        # Steam text
-        steam_text = QGraphicsTextItem("Game Recording")
-        steam_text.setDefaultTextColor(QColor("#ecf0f1"))
-        font = QFont("Arial", 16)
-        font.setWeight(QFont.Bold)
-        font.setStyleStrategy(QFont.PreferAntialias)
-        steam_text.setFont(font)
-        text_width = steam_text.boundingRect().width()
-        steam_text.setPos(steam_x + (steam_box_width - text_width) / 2, steam_box_y + 90)
-        self.routes_scene.addItem(steam_text)
-        
-        # Connection points on Steam box
-        steam_left_x = steam_x
-        steam_right_x = steam_x + steam_box_width
-        steam_center_y = steam_y
-        
-        # Draw sources - alternate between left and right
-        source_boxes = []
-        start_y = margin
-        
-        for idx, (source_id, source_info) in enumerate(source_list):
-            source_name = source_info['name']
-            
-            # Alternate: even indices on left, odd on right
-            on_left = (idx % 2 == 0)
-            
-            if on_left:
-                box_x = steam_x - horizontal_gap - box_width
-                row = idx // 2
-            else:
-                box_x = steam_x + steam_box_width + horizontal_gap
-                row = idx // 2
-            
-            box_y = start_y + row * source_spacing
-            
-            # Draw rounded rectangle box
-            box_rect = QGraphicsRectItem(box_x, box_y, box_width, box_height)
-            box_rect.setBrush(QBrush(QColor("#2c3e50")))
-            box_rect.setPen(QPen(QColor("#3498db"), 3))
-            box_rect.setFlags(QGraphicsRectItem.ItemIsSelectable)
-            self.routes_scene.addItem(box_rect)
-            
-            # Draw icon on left side of box
-            icon_x = box_x + box_padding
-            icon_y = box_y + box_padding
-            
-            icon_pixmap = icon_cache.get_icon(source_name, icon_size)
-            if not icon_pixmap.isNull():
-                icon_item = QGraphicsPixmapItem(icon_pixmap)
-                icon_item.setPos(icon_x, icon_y)
-                self.routes_scene.addItem(icon_item)
-            else:
-                placeholder = QGraphicsRectItem(icon_x, icon_y, icon_size, icon_size)
-                placeholder.setBrush(QBrush(QColor("#555555")))
-                placeholder.setPen(QPen(QColor("#888888"), 1))
-                self.routes_scene.addItem(placeholder)
-            
-            # Draw source name next to icon (full description, no truncation)
-            text_x = icon_x + icon_size + 15
-            text_y = box_y + box_height / 2 - 15
-            
-            # Use full name without truncation
-            display_name = source_name
-            text_item = QGraphicsTextItem(display_name)
-            text_item.setDefaultTextColor(QColor("#ecf0f1"))
-            font = QFont("Arial", 16)
-            font.setWeight(QFont.Bold)
-            font.setStyleStrategy(QFont.PreferAntialias)
-            text_item.setFont(font)
-            text_item.setPos(text_x, text_y)
-            self.routes_scene.addItem(text_item)
-            
-            # Connection point
-            if on_left:
-                connection_x = box_x + box_width  # Right edge
-            else:
-                connection_x = box_x  # Left edge
-            connection_y = box_y + box_height / 2
-            
-            source_boxes.append({
-                'x': connection_x,
-                'y': connection_y,
-                'on_left': on_left
-            })
-        
-        # Draw connections with arrows
-        pen = QPen(QColor("#3498db"), 5)
-        pen.setCapStyle(Qt.RoundCap)
-        
-        for src in source_boxes:
-            start_x = src['x']
-            start_y = src['y']
-            on_left = src['on_left']
-            
-            # Target on Steam box (left or right side)
-            if on_left:
-                end_x = steam_left_x
-            else:
-                end_x = steam_right_x
-            end_y = steam_center_y
-            
-            # Direct line from source to Steam
-            line = QGraphicsLineItem(start_x, start_y, end_x, end_y)
-            line.setPen(pen)
-            self.routes_scene.addItem(line)
-            
-            # Arrow at source connection
-            arrow_size = 12
-            arrow = QGraphicsPolygonItem()
-            if on_left:
-                # Arrow pointing right
-                arrow_poly = QPolygonF([
-                    QPointF(start_x, start_y),
-                    QPointF(start_x + arrow_size, start_y - arrow_size/2),
-                    QPointF(start_x + arrow_size, start_y + arrow_size/2)
-                ])
-            else:
-                # Arrow pointing left
-                arrow_poly = QPolygonF([
-                    QPointF(start_x, start_y),
-                    QPointF(start_x - arrow_size, start_y - arrow_size/2),
-                    QPointF(start_x - arrow_size, start_y + arrow_size/2)
-                ])
-            arrow.setPolygon(arrow_poly)
-            arrow.setBrush(QBrush(QColor("#3498db")))
-            arrow.setPen(QPen(QColor("#2980b9"), 2))
-            self.routes_scene.addItem(arrow)
-        
-        # Set fixed scene rect
-        max_rows = (MAX_SOURCES + 1) // 2  # Round up for odd numbers
-        fixed_height = margin + (max_rows - 1) * source_spacing + steam_box_height + margin * 2
-        self.routes_scene.setSceneRect(0, 0, total_width, fixed_height)
-        
-        # Fit view once and disable scrolling
-        self.routes_graphics_view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.routes_graphics_view.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.routes_graphics_view.resetTransform()
-        self.routes_graphics_view.fitInView(self.routes_scene.sceneRect(), Qt.KeepAspectRatio)
+        self.routes_table.setRowCount(0)
+        self.routes_status_label.setText(f"Error loading routes: {error}")
+        self.routes_status_label.setStyleSheet("color: #c62828; font-size: 11px;")
 
     def update_system_info(self):
         """Update system information display"""
@@ -2322,6 +1754,11 @@ class MainWindow(QMainWindow):
         
         # Update routing instructions based on auto_apply setting
         self._update_routing_instructions()
+
+        if self.auto_detect_timer:
+            self.auto_detect_timer.stop()
+            self.start_auto_detect()
+        self.start_routes_poll()
         
         # Update info note based on both restore_default_on_close and minimize_to_tray settings
         restore_on_close = new_settings.get('restore_default_on_close', True)
@@ -2333,9 +1770,6 @@ class MainWindow(QMainWindow):
             info_text = "Closing will restore default routing" if restore_on_close else "Closing will keep current routing"
         
         self.info_note.setText(info_text)
-        
-        # Update graphics view theme if theme setting changed
-        self._update_graphics_view_theme()
     
     def _update_routing_instructions(self):
         """Update routing instructions text based on auto-apply setting"""
@@ -2357,8 +1791,3 @@ class MainWindow(QMainWindow):
             )
         
         self.routing_instructions.setText(text)
-        
-        # Restart auto-detect with new interval if it changed
-        if self.auto_detect_timer:
-            self.auto_detect_timer.stop()
-            self.start_auto_detect()
