@@ -872,6 +872,56 @@ class MainWindow(QMainWindow):
             QSystemTrayIcon.Information,
             4000
         )
+
+    @staticmethod
+    def _format_game_names_line(names, max_shown=6):
+        """Comma-separated list; truncates long lists for tray/status text."""
+        if not names:
+            return ""
+        names = sorted(names)
+        if len(names) <= max_shown:
+            return ", ".join(names)
+        head = ", ".join(names[:max_shown])
+        return f"{head} (+{len(names) - max_shown} more)"
+
+    def _notify_auto_routed_games(self, game_names, success, detail_message=""):
+        """Tray balloon (if available) plus status line when auto-routing runs."""
+        names = sorted(game_names) if game_names else []
+        if success and names:
+            if len(names) == 1:
+                body = f"Routed «{names[0]}» to Steam recording."
+            else:
+                body = (
+                    f"Routed {len(names)} games to Steam recording:\n"
+                    f"{self._format_game_names_line(names)}"
+                )
+            status = f"Routed to Steam: {self._format_game_names_line(names, max_shown=3)}"
+        elif success:
+            body = "Audio routing applied to Steam recording."
+            status = "Routed to Steam recording"
+        else:
+            line = self._format_game_names_line(names) if names else ""
+            if line:
+                body = f"Routing failed for: {line}"
+                if detail_message:
+                    body += f"\n{detail_message}"
+            else:
+                body = detail_message or "Could not route to Steam recording."
+            status = f"✗ {body.splitlines()[0][:80]}"
+
+        if self.tray_icon:
+            self.tray_icon.showMessage(
+                "Steam Audio Isolator",
+                body[:512],
+                QSystemTrayIcon.Information if success else QSystemTrayIcon.Warning,
+                6000 if len(body) > 120 else 4500,
+            )
+        self.status_label.setText(status)
+        self.status_label.setStyleSheet(
+            "color: #4CAF50; font-size: 11px;"
+            if success
+            else "color: #f44336; font-size: 11px;"
+        )
     
     def create_app_icon(self, size=64):
         """Create app icon: rounded square with source -> direct path -> target (distinct from Steam/generic audio)."""
@@ -1503,7 +1553,7 @@ class MainWindow(QMainWindow):
                 # Update source list first
                 self.update_sources_list()
                 # Then auto-apply routing
-                self._auto_apply_new_games()
+                self._auto_apply_new_games(new_games)
             else:
                 # Just update the source list
                 self.update_sources_list()
@@ -1511,15 +1561,29 @@ class MainWindow(QMainWindow):
             # Update tracked games
             self.previously_detected_games = current_games
             
-            # Update status
+            # Update status (auto-apply sets its own message + tray)
             if current_sources:
-                self.status_label.setText(f"Found {len(current_sources)} audio source(s)")
-                self.status_label.setStyleSheet("color: #4CAF50; font-size: 11px;")
+                if not (new_games and auto_apply_enabled):
+                    self.status_label.setText(f"Found {len(current_sources)} audio source(s)")
+                    self.status_label.setStyleSheet("color: #4CAF50; font-size: 11px;")
 
-    def _auto_apply_new_games(self):
-        """Automatically apply routing when new games are detected"""
+    def _auto_apply_new_games(self, new_game_names=None):
+        """Automatically apply routing when new games are detected.
+
+        new_game_names: display names of games that triggered auto-apply (for notifications).
+        If None, names are inferred from selected Game sources.
+        """
         import logging
         logger = logging.getLogger(__name__)
+
+        def _names_for_feedback():
+            if new_game_names:
+                return set(new_game_names) & self.selected_sources
+            return {
+                s['name']
+                for s in self.sources
+                if s.get('type') == 'Game' and s['name'] in self.selected_sources
+            }
         
         if not self.selected_sources:
             logger.debug("No game sources selected, skipping auto-apply")
@@ -1530,18 +1594,30 @@ class MainWindow(QMainWindow):
             steam_node_id = self.pipewire.steam_node_id
             if not steam_node_id:
                 logger.warning("Steam node not found, cannot auto-apply routing")
+                self._notify_auto_routed_games(
+                    _names_for_feedback(),
+                    False,
+                    "Steam recording input not found (is Steam running with Game Recording on?)",
+                )
                 return
             
             selected_source_ids = [s['id'] for s in self.sources if s['name'] in self.selected_sources]
             
             if selected_source_ids:
+                feedback_names = _names_for_feedback()
+                if not feedback_names:
+                    feedback_names = {
+                        s['name']
+                        for s in self.sources
+                        if s['name'] in self.selected_sources
+                    }
+
                 logger.info(f"Auto-applying routing for: {self.selected_sources}")
                 success, message = self.pipewire.create_audio_routing(selected_source_ids, steam_node_id)
                 
                 if success:
                     logger.info(f"Auto-apply successful: {message}")
-                    self.status_label.setText("Auto-applied routing to new games")
-                    self.status_label.setStyleSheet("color: #4CAF50; font-size: 11px;")
+                    self._notify_auto_routed_games(feedback_names, True)
                     
                     # Update routes display
                     self.route_check_timer = QTimer()
@@ -1550,8 +1626,14 @@ class MainWindow(QMainWindow):
                     self.route_check_timer.start(500)
                 else:
                     logger.warning(f"Auto-apply failed: {message}")
+                    self._notify_auto_routed_games(feedback_names, False, message)
         except Exception as e:
             logger.error(f"Error in auto-apply: {e}")
+            self._notify_auto_routed_games(
+                _names_for_feedback() if self.selected_sources else set(),
+                False,
+                str(e),
+            )
 
     
     def closeEvent(self, event):
@@ -1665,6 +1747,13 @@ class MainWindow(QMainWindow):
             s['name'] for s in sources if s.get('type') == 'Game'
         }
 
+        if not sources:
+            self.status_label.setText("⚠ No audio sources detected (is PipeWire running?)")
+            self.status_label.setStyleSheet("color: #ff9800; font-size: 11px;")
+        else:
+            self.status_label.setText(f"Found {len(sources)} audio source(s)")
+            self.status_label.setStyleSheet("color: #4CAF50; font-size: 11px;")
+
         # Games already running when the first scan finishes: auto-apply once (timer may not fire a "change")
         if not self._startup_auto_apply_done and any(
             s.get('type') == 'Game' for s in sources
@@ -1673,15 +1762,15 @@ class MainWindow(QMainWindow):
             if self.settings.get('auto_apply_games', True):
                 self.pipewire._update_steam_node()
                 if self.pipewire.steam_node_id and self.selected_sources:
-                    self._auto_apply_new_games()
-        
-        # Update status
-        if sources:
-            self.status_label.setText(f"Found {len(sources)} audio source(s)")
-            self.status_label.setStyleSheet("color: #4CAF50; font-size: 11px;")
-        else:
-            self.status_label.setText("⚠ No audio sources detected (is PipeWire running?)")
-            self.status_label.setStyleSheet("color: #ff9800; font-size: 11px;")
+                    excluded = self.config.get_excluded_games()
+                    startup_games = {
+                        s['name']
+                        for s in sources
+                        if s.get('type') == 'Game' and s['name'] not in excluded
+                    }
+                    self._auto_apply_new_games(
+                        startup_games if startup_games else None
+                    )
 
     def on_detection_error(self, error):
         """Handle detection error"""
