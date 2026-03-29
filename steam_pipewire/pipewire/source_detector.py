@@ -5,6 +5,7 @@ import subprocess
 import json
 import re
 import logging
+from pathlib import Path
 from typing import List, Dict, Optional
 
 logger = logging.getLogger(__name__)
@@ -132,6 +133,28 @@ class SourceDetector:
             logging.getLogger(__name__).error(f"Error finding Steam node: {e}")
         return None
 
+    @staticmethod
+    def _game_label_from_process_binary(
+        props: Dict, app_name: str, node_description: str, node_name: str
+    ) -> str:
+        """Prefer real executable name when middleware (FMOD/Wwise) hides the game title."""
+        raw = (props.get('application.process.binary') or '').strip()
+        if raw:
+            base = Path(raw).name
+            generic = {
+                'run.sh', 'start.sh', 'launch.sh', 'steam.sh', 'bash', 'sh',
+                'steam', 'xdg-open', 'python', 'python3',
+            }
+            bl = base.lower()
+            if bl not in generic and 'fmod' not in bl and 'wwise' not in bl:
+                stem = base
+                for suf in ('.x86_64', '.x86', '.bin'):
+                    if stem.endswith(suf):
+                        stem = stem[:-len(suf)]
+                        break
+                return stem
+        return node_description or app_name or node_name
+
     def _parse_nodes(self, data: List[Dict]) -> List[Dict]:
         """Parse PipeWire nodes to extract audio sources"""
         sources = []
@@ -206,6 +229,13 @@ class SourceDetector:
                 elif source_type == 'Game' and any(x in app_binary.lower() for x in ['wine', 'proton', '.exe']):
                     # Wine/Proton game - use application.name which has the real game name
                     description = app_name or props.get('node.description') or node_name
+                elif source_type == 'Game' and (
+                    'fmod' in (app_name + (props.get('node.description') or '') + media_name).lower()
+                    or 'wwise' in (app_name + (props.get('node.description') or '') + media_name).lower()
+                ):
+                    description = self._game_label_from_process_binary(
+                        props, app_name, props.get('node.description') or '', node_name
+                    )
                 # For Communication apps, use binary name for clarity (Discord not WEBRTC VoiceEngine)
                 elif source_type == 'Communication' and app_binary and app_binary not in ['', 'pipewire', 'wireplumber']:
                     # Use binary name and capitalize it nicely
@@ -279,6 +309,13 @@ class SourceDetector:
         # These are categorized as System since they're infrastructure, not app sources
         if 'Audio/Sink' in media_class:
             return 'System'
+
+        media_name_l = (props.get('media.name') or '').lower()
+        node_desc_l = (props.get('node.description') or '').lower()
+        combo_mw = f"{app_name} {node_desc_l} {media_name_l}"
+        # Common game audio middleware registers a generic app name (e.g. "FMOD Ex App")
+        if 'fmod' in combo_mw or 'wwise' in combo_mw:
+            return 'Game'
         
         # Check for Steam game indicators (expanded detection)
         # 1. Wine/Proton executables
@@ -316,6 +353,11 @@ class SourceDetector:
                        '/compatdata/', '/shadercache/', '/.var/app/com.valvesoftware.steam',
                        'flatpak/com.valvesoftware.steam']):
                     return 'Game'
+
+        # 5b. Native Linux under steamapps/common/ often has no .x86_64 suffix on the binary
+        if '/steamapps/common/' in app_binary:
+            if 'steamwebhelper' not in app_binary and 'gameoverlayui' not in app_binary:
+                return 'Game'
         
         # 6. Check media.role property (some games set this)
         media_role = props.get('media.role', '').lower()
