@@ -10,7 +10,10 @@ from PyQt5.QtWidgets import (
     QGraphicsPathItem, QGraphicsPixmapItem, QGraphicsEllipseItem, QGraphicsPolygonItem, QApplication
 )
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QVariant, QTimer, QPointF, QRectF, QSize, QMimeData
-from PyQt5.QtGui import QColor, QFont, QKeySequence, QIcon, QPixmap, QPainter, QPen, QBrush, QPainterPath, QPolygonF, QGuiApplication
+from PyQt5.QtGui import (
+    QColor, QFont, QKeySequence, QIcon, QPixmap, QPainter, QPen, QBrush, QPainterPath,
+    QPolygonF, QGuiApplication, QCursor,
+)
 from pathlib import Path
 import os
 from steam_pipewire.pipewire.source_detector import SourceDetector
@@ -704,7 +707,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self._exec_path = exec_path or ""
         self.setWindowTitle("Steam Audio Isolator")
-        self.setGeometry(100, 100, 900, 750)
+        self.resize(900, 750)
 
         self.pipewire = PipeWireController()
         self.config = ConfigManager()
@@ -734,8 +737,26 @@ class MainWindow(QMainWindow):
 
         self.init_ui()
         self.setup_system_tray()
+        self._center_on_work_area()
         self.detect_sources()
         self.start_auto_detect()
+
+    def _center_on_work_area(self):
+        """Multi-monitor: (100,100) is arbitrary global coords and often lands on the wrong display."""
+        app = QGuiApplication.instance()
+        if app is None:
+            self.move(100, 100)
+            return
+        screen = QGuiApplication.screenAt(QCursor.pos())
+        if screen is None:
+            screen = app.primaryScreen()
+        if screen is None:
+            self.move(100, 100)
+            return
+        area = screen.availableGeometry()
+        fg = self.frameGeometry()
+        fg.moveCenter(area.center())
+        self.move(fg.topLeft())
 
     def init_ui(self):
         """Initialize the user interface"""
