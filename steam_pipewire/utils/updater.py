@@ -17,6 +17,7 @@ from typing import Tuple, Optional
 GITHUB_RELEASES_API = "https://api.github.com/repos/crashman79/steam-audio-isolator/releases/latest"
 UPDATES_CACHE_DIR = Path.home() / ".cache" / "steam-audio-isolator"
 UPDATES_NEW_BINARY = UPDATES_CACHE_DIR / "steam-audio-isolator.new"
+LOCK_FILE_PATH = UPDATES_CACHE_DIR.parent / "steam-audio-isolator.lock"
 RELEASE_ASSET_NAME = "steam-audio-isolator"
 
 
@@ -157,17 +158,28 @@ def restart_to_apply() -> Tuple[bool, str]:
         return False, "Could not determine binary path."
     new_path = str(UPDATES_NEW_BINARY.resolve())
     current_path = str(current.resolve())
+    lock_arg = str(LOCK_FILE_PATH.resolve())
     try:
         with tempfile.NamedTemporaryFile(
             mode="w", prefix="steam-audio-isolator-update-", suffix=".sh", delete=False
         ) as script:
+            # Wait until the old process releases single-instance flock (closeEvent can take seconds).
+            # Without this, the new binary often starts while the old PID still holds the lock and exits immediately.
             script.write(
                 "#!/bin/sh\n"
-                "sleep 1\n"
-                'cp "$1" "$2" && chmod 755 "$2"\n'
+                "set -e\n"
+                "NEW=\"$1\"\n"
+                "CUR=\"$2\"\n"
+                "LOCK=\"$3\"\n"
+                "mkdir -p \"$(dirname \"$LOCK\")\"\n"
+                "exec 9>>\"$LOCK\"\n"
+                "flock -w 120 9\n"
+                "flock -u 9\n"
+                "exec 9<&-\n"
+                'cp "$NEW" "$CUR" && chmod 755 "$CUR"\n'
                 "sync\n"
                 'rm -f "$0"\n'
-                'exec "$2"\n'
+                'exec "$CUR"\n'
             )
         os.chmod(script.name, 0o755)
         # Spawn helper with a whitelisted env so exec'd binary gets a clean env and does fresh onefile extract.
@@ -179,7 +191,7 @@ def restart_to_apply() -> Tuple[bool, str]:
         )
         env = {k: os.environ[k] for k in _safe if k in os.environ}
         subprocess.Popen(
-            ["/bin/sh", script.name, new_path, current_path],
+            ["/bin/sh", script.name, new_path, current_path, lock_arg],
             start_new_session=True,
             close_fds=True,
             env=env,
