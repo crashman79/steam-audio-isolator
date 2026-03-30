@@ -1014,7 +1014,7 @@ class MainWindow(QMainWindow):
             f"<p style='margin-top: 20px; color: #666; font-size: 10px;'>"
             f"Version {__import__('steam_pipewire').__version__} | "
             f"Config: ~/.config/steam-audio-isolator/ | "
-            f"Logs: ~/.cache/steam-audio-isolator.log"
+            f"Logs: ~/.cache/steam-audio-isolator/steam-audio-isolator.log"
             "</p>"
         )
         description.setWordWrap(True)
@@ -1665,7 +1665,7 @@ class MainWindow(QMainWindow):
                 f"Error: {e}\n\n"
                 f"Troubleshooting:\n"
                 f"• Verify PipeWire is running: systemctl --user status wireplumber\n"
-                f"• Check logs: ~/.cache/steam-audio-isolator.log\n"
+                f"• Check logs: ~/.cache/steam-audio-isolator/steam-audio-isolator.log\n"
                 f"• Try running: pw-cli list-objects Node"
             )
 

@@ -11,19 +11,21 @@ runtime-version: '24.08'
 sdk: org.freedesktop.Sdk
 command: steam-audio-isolator
 
+# network: About tab checks GitHub Releases. dbus: Qt tray + notifications.
 finish-args:
   - --share=ipc
   - --share=network
-  # X11 and Wayland sockets (Qt picks the session; neither is “forced” over the other)
   - --socket=fallback-x11
   - --socket=wayland
   - --device=dri
-  - --socket=session-bus
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
   - --filesystem=xdg-run/pipewire-0
-  # Config (profiles, settings), autostart, app menu entries, icons, logs, lock file
-  - --filesystem=xdg-config
-  - --filesystem=xdg-cache
-  - --filesystem=xdg-data
+  - --filesystem=xdg-config/steam-audio-isolator:create
+  - --filesystem=xdg-config/autostart:create
+  - --filesystem=xdg-cache/steam-audio-isolator:create
+  - --filesystem=xdg-data/applications:create
+  - --filesystem=xdg-data/icons:create
 
 modules:
   - name: pipewire
