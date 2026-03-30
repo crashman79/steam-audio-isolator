@@ -5,6 +5,20 @@ All notable changes to Steam Audio Isolator will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [0.3.11] - 2026-03-30
+
+### Added
+- About **Updates** for Flatpak: GitHub Releases check; message explains `flatpak update` for Flathub; **Open GitHub release page**; `finish-args` include `--share=network`.
+- **Flatpak** (`flatpak/io.github.crashman79.steam-audio-isolator.yml`): Freedesktop Platform 24.08, `branch: stable`, bundled PipeWire 1.2.7 for `pw-cli`/`pw-dump`, host `xdg-run/pipewire-0`, XDG config/cache/data; desktop + AppStream; hicolor icons 16–256px; no `QT_QPA_PLATFORM` override when `FLATPAK_ID` is set. CI: `steam-audio-isolator-x86_64.flatpak` on PR/main; tagged releases upload the same bundle and sync AppStream `<release>`. Publishing docs and [Flathub submission](https://docs.flathub.org/docs/for-app-authors/submission) pointers in `flatpak/README.md`. Settings: Flatpak-specific help; hide “Copy to ~/.local/bin”.
+- **Portable release** `steam-audio-isolator-linux-x86_64-portable.tar.gz`: venv + launcher script (no PyInstaller).
+
+### Fixed
+- **Linux / Wayland:** set `QT_QPA_PLATFORM=wayland;xcb` before Qt when `WAYLAND_DISPLAY` is set (PyInstaller / venv) to reduce Qt5XcbQpa + libxkbcommon SEGVs; `STEAM_AUDIO_FORCE_QT_XCB=1` to skip. Flatpak does not set this override.
+- Bump PyQt5 to 5.15.11.
+- **Autostart / menu** for portable launcher: `STEAM_AUDIO_ISOLATOR_LAUNCHER` for desktop entries.
+
 ## [0.3.10] - 2026-03-28
 
 ### Fixed

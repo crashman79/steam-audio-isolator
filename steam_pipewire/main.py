@@ -33,6 +33,10 @@ if getattr(sys, "frozen", False):
         except Exception:
             pass
 
+from steam_pipewire.qt_env import apply_qt_platform_environment
+
+apply_qt_platform_environment()
+
 # --- Normal imports and startup ---
 import logging
 import traceback
@@ -59,6 +63,10 @@ logging.basicConfig(
     handlers=[file_handler, console_handler]
 )
 logger = logging.getLogger(__name__)
+logger.debug(
+    "QT_QPA_PLATFORM=%s",
+    os.environ.get("QT_QPA_PLATFORM", "(unset, Qt default)"),
+)
 
 
 def _install_excepthook():
@@ -86,6 +94,12 @@ def get_autostart_exec_path() -> str:
     """Return the command used to start this app (for autostart desktop file)."""
     if getattr(sys, 'frozen', False):
         return sys.executable
+    fp = os.environ.get("FLATPAK_ID", "").strip()
+    if fp:
+        return f"flatpak run {fp}"
+    launcher = os.environ.get("STEAM_AUDIO_ISOLATOR_LAUNCHER", "").strip()
+    if launcher and os.path.isfile(launcher) and os.access(launcher, os.X_OK):
+        return launcher
     return f"{sys.executable} -m steam_pipewire.main"
 
 
@@ -131,7 +145,8 @@ def main():
         app = QApplication(sys.argv)
         _install_excepthook()
         app.setApplicationName("Steam Audio Isolator")
-        app.setDesktopFileName("steam-audio-isolator.desktop")
+        _dfn = os.environ.get("FLATPAK_ID", "").strip() or "steam-audio-isolator"
+        app.setDesktopFileName(_dfn)
         exec_path = get_autostart_exec_path()
         window = MainWindow(exec_path=exec_path)
         config = ConfigManager()

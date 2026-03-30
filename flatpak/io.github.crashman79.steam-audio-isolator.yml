@@ -1,0 +1,86 @@
+# Local build (from repo root, after: git submodule update / flatpak install flathub dependencies):
+#   flatpak install -y flathub org.freedesktop.Platform//24.08 org.freedesktop.Sdk//24.08
+#   flatpak-builder --user --install --force-clean build-dir flatpak/io.github.crashman79.steam-audio-isolator.yml
+#
+# Flathub: submit manifest + generated python-deps (flatpak-builder-tools pip generator) in a separate flathub repo.
+
+app-id: io.github.crashman79.steam-audio-isolator
+branch: stable
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+command: steam-audio-isolator
+
+finish-args:
+  - --share=ipc
+  - --share=network
+  # X11 and Wayland sockets (Qt picks the session; neither is “forced” over the other)
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  - --socket=session-bus
+  - --filesystem=xdg-run/pipewire-0
+  # Config (profiles, settings), autostart, app menu entries, icons, logs, lock file
+  - --filesystem=xdg-config
+  - --filesystem=xdg-cache
+  - --filesystem=xdg-data
+
+modules:
+  - name: pipewire
+    buildsystem: meson
+    config-opts:
+      - -Dsession-managers=[]
+      - -Ddocs=disabled
+      - -Dexamples=disabled
+      - -Dtests=disabled
+      - -Dinstalled_tests=disabled
+      - -Dman=disabled
+      - -Dgstreamer=disabled
+      - -Dffmpeg=disabled
+      - -Dbluez5=disabled
+      - -Djack=disabled
+      - -Dpipewire-jack=disabled
+      - -Dpipewire-alsa=disabled
+      - -Dpipewire-v4l2=disabled
+      - -Dv4l2=disabled
+      - -Dalsa=disabled
+      - -Dlibcamera=disabled
+      - -Droc=disabled
+      - -Dudev=disabled
+      - -Dsystemd-system-service=disabled
+      - -Dsystemd-user-service=disabled
+      - -Dflatpak=enabled
+    sources:
+      - type: archive
+        url: https://gitlab.freedesktop.org/pipewire/pipewire/-/archive/1.2.7/pipewire-1.2.7.tar.bz2
+        sha256: 3c00292f9a419610c9eeb6e45b958d460afb601ecc6894012574a3b9f118616a
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /share/alsa
+      - '*.a'
+
+  - name: steam-audio-isolator
+    buildsystem: simple
+    build-options:
+      build-args:
+        - --share=network
+    build-commands:
+      - pip3 install --verbose --exists-action=i --no-build-isolation --prefix=${FLATPAK_DEST}
+          "PyQt5==5.15.11" "pydbus==0.6.0" "darkdetect==0.8.0" "certifi>=2023"
+      - pip3 install --verbose --exists-action=i --no-build-isolation --prefix=${FLATPAK_DEST} --no-deps .
+      - rm -f ${FLATPAK_DEST}/share/applications/steam-audio-isolator.desktop
+      - install -Dpm644 flatpak/io.github.crashman79.steam-audio-isolator.desktop ${FLATPAK_DEST}/share/applications/io.github.crashman79.steam-audio-isolator.desktop
+      - install -Dpm644 flatpak/io.github.crashman79.steam-audio-isolator.metainfo.xml ${FLATPAK_DEST}/share/metainfo/io.github.crashman79.steam-audio-isolator.metainfo.xml
+      # Full hicolor set (menus, notifications, task switchers request different sizes).
+      - |
+        for s in 16 24 32 48 64 128 256; do
+          f="steam-audio-isolator-${s}.png"
+          if test -f "$f"; then
+            install -Dpm644 "$f" \
+              "${FLATPAK_DEST}/share/icons/hicolor/${s}x${s}/apps/io.github.crashman79.steam-audio-isolator.png"
+          fi
+        done
+    sources:
+      - type: dir
+        path: ..

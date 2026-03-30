@@ -8,10 +8,10 @@ from PyQt5.QtWidgets import (
     QTabWidget, QTextEdit, QSpinBox, QLineEdit, QSystemTrayIcon, QMenu, QAction,
     QApplication, QSizePolicy, QTableWidget, QTableWidgetItem, QHeaderView,
 )
-from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
+from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer, QUrl
 from PyQt5.QtGui import (
     QColor, QFont, QKeySequence, QIcon, QPixmap, QPainter, QPen, QBrush, QPainterPath,
-    QGuiApplication, QCursor,
+    QGuiApplication, QCursor, QDesktopServices,
 )
 from pathlib import Path
 import os
@@ -59,7 +59,7 @@ class RouteRefreshThread(QThread):
 
 class UpdateCheckThread(QThread):
     """Worker thread for update check"""
-    result = pyqtSignal(bool, str, object, object)  # success, message, latest_tag, download_url
+    result = pyqtSignal(bool, str, object, object, object)  # success, message, tag, download_url, release_page_url
 
     def run(self):
         try:
@@ -71,7 +71,7 @@ class UpdateCheckThread(QThread):
             r = updater.check_for_updates(current)
             self.result.emit(*r)
         except Exception as e:
-            self.result.emit(False, str(e), None, None)
+            self.result.emit(False, str(e), None, None, None)
 
 
 class DownloadUpdateThread(QThread):
@@ -205,18 +205,36 @@ class SettingsDialog(QWidget):
         self.start_at_login_checkbox.setChecked(self.settings.get('start_at_login', False))
         self.start_at_login_checkbox.stateChanged.connect(self._on_settings_changed)
         tray_layout.addWidget(self.start_at_login_checkbox)
-        tray_layout.addWidget(QLabel("When enabled, creates ~/.config/autostart/steam-audio-isolator.desktop. Click Save to apply."))
+        _login_txt = (
+            "When enabled, creates ~/.config/autostart/steam-audio-isolator.desktop that launches this "
+            "Flatpak (flatpak run …). Click Save to apply."
+            if self.config.is_flatpak()
+            else "When enabled, creates ~/.config/autostart/steam-audio-isolator.desktop. Click Save to apply."
+        )
+        tray_layout.addWidget(QLabel(_login_txt))
         self.add_to_app_menu_checkbox = QCheckBox("Add to application menu")
         self.add_to_app_menu_checkbox.setChecked(self.settings.get('add_to_app_menu', False))
         self.add_to_app_menu_checkbox.stateChanged.connect(self._on_settings_changed)
         tray_layout.addWidget(self.add_to_app_menu_checkbox)
-        tray_layout.addWidget(QLabel("When enabled, creates ~/.local/share/applications/steam-audio-isolator.desktop (and copies binary to ~/.local/bin if needed). Click Save to apply."))
+        _menu_txt = (
+            "Flatpak already installs a menu entry. Enable this only if you want an extra "
+            "~/.local/share/applications/steam-audio-isolator.desktop (not required for the icon). "
+            "Does not use ~/.local/bin."
+            if self.config.is_flatpak()
+            else "When enabled, creates ~/.local/share/applications/steam-audio-isolator.desktop "
+            "(and copies the one-file binary to ~/.local/bin when needed). Click Save to apply."
+        )
+        tray_layout.addWidget(QLabel(_menu_txt))
         copy_bin_btn = QPushButton("Copy to ~/.local/bin")
         copy_bin_btn.setToolTip("Install the binary to a PATH-friendly location (standalone binary only)")
         copy_bin_btn.clicked.connect(self._on_copy_to_local_bin)
+        if self.config.is_flatpak():
+            copy_bin_btn.setVisible(False)
         tray_layout.addWidget(copy_bin_btn)
         self.copy_bin_status = QLabel("")
         self.copy_bin_status.setStyleSheet("color: #666; font-size: 10px;")
+        if self.config.is_flatpak():
+            self.copy_bin_status.setVisible(False)
         tray_layout.addWidget(self.copy_bin_status)
         tray_group.setLayout(tray_layout)
         right.addWidget(tray_group)
@@ -861,26 +879,35 @@ class MainWindow(QMainWindow):
         subtitle.setStyleSheet("color: #666; font-size: 12px; margin-bottom: 10px;")
         layout.addWidget(subtitle)
         
-        # Updates (only when running as built binary)
+        # Updates: one-file binary (download + restart) or Flatpak / GitHub (check vs Releases; Flathub uses flatpak update)
         try:
             from steam_pipewire.utils import updater
-            if updater.is_frozen():
+            if updater.is_frozen() or updater.is_flatpak():
+                _flatpak = updater.is_flatpak()
                 update_group = QGroupBox("Updates")
                 update_layout = QVBoxLayout()
-                update_status = QLabel("Click Check for updates to see if a new version is available.")
+                _hint = (
+                    "Compares this build’s version to the latest tag on GitHub Releases. "
+                    "Flathub has no in-app update API—after publishing there, use flatpak update."
+                    if _flatpak
+                    else "Click Check for updates to see if a new version is available on GitHub."
+                )
+                update_status = QLabel(_hint)
                 update_status.setWordWrap(True)
                 update_layout.addWidget(update_status)
                 btn_row = QHBoxLayout()
                 check_btn = QPushButton("Check for updates")
                 download_btn = QPushButton("Download update")
                 restart_btn = QPushButton("Restart to apply update")
+                open_release_btn = QPushButton("Open GitHub release page")
                 btn_row.addWidget(check_btn)
                 btn_row.addWidget(download_btn)
                 btn_row.addWidget(restart_btn)
+                btn_row.addWidget(open_release_btn)
                 btn_row.addStretch()
-                # Contextual visibility: only Check initially; Download when update ready; Restart replaces Download when downloaded
-                download_btn.setVisible(False)
-                restart_btn.setVisible(updater.has_pending_update())
+                download_btn.setVisible(not _flatpak)
+                restart_btn.setVisible(not _flatpak and updater.has_pending_update())
+                open_release_btn.setVisible(False)
                 update_layout.addLayout(btn_row)
                 update_group.setLayout(update_layout)
                 layout.addWidget(update_group)
@@ -888,18 +915,28 @@ class MainWindow(QMainWindow):
                 widget.update_download_btn = download_btn
                 widget.update_restart_btn = restart_btn
                 widget.update_download_url = None
+                widget._release_page_url = ""
                 check_thread = [None]
                 download_thread = [None]
 
-                def on_check_result(success, message, latest_tag, download_url):
+                def on_check_result(success, message, latest_tag, download_url, release_page_url):
                     update_status.setText(message)
                     widget.update_download_url = download_url
+                    widget._release_page_url = (release_page_url or "").strip()
+                    open_release_btn.setVisible(_flatpak and bool(widget._release_page_url))
+                    if _flatpak:
+                        return
                     if download_url:
                         download_btn.setVisible(True)
                         restart_btn.setVisible(False)
                     else:
                         download_btn.setVisible(False)
                         restart_btn.setVisible(updater.has_pending_update())
+
+                def on_open_release_clicked():
+                    u = getattr(widget, "_release_page_url", "") or ""
+                    if u:
+                        QDesktopServices.openUrl(QUrl(u))
 
                 def on_check_clicked():
                     check_btn.setEnabled(False)
@@ -936,6 +973,7 @@ class MainWindow(QMainWindow):
                 check_btn.clicked.connect(on_check_clicked)
                 download_btn.clicked.connect(on_download_clicked)
                 restart_btn.clicked.connect(on_restart_clicked)
+                open_release_btn.clicked.connect(on_open_release_clicked)
         except Exception:
             pass
 

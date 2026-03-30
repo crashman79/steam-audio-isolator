@@ -10,6 +10,15 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 
 
+def _desktop_icon_line(icon_path: Optional[str]) -> str:
+    if icon_path:
+        return f"Icon={icon_path}\n"
+    fp = os.environ.get("FLATPAK_ID", "").strip()
+    if fp:
+        return f"Icon={fp}\n"
+    return "Icon=steam-audio-isolator\n"
+
+
 @dataclass
 class AppSettings:
     """Application settings with type safety and defaults"""
@@ -186,6 +195,10 @@ class ConfigManager:
         """Return True when running as PyInstaller binary."""
         return getattr(sys, 'frozen', False)
 
+    def is_flatpak(self) -> bool:
+        """True inside a Flatpak sandbox (in-app menu/autostart rules differ)."""
+        return bool(os.environ.get("FLATPAK_ID", "").strip())
+
     def is_running_from_local_bin(self) -> bool:
         """Return True when the running binary is already in ~/.local/bin."""
         if not self.is_frozen():
@@ -213,8 +226,14 @@ class ConfigManager:
 
     def install_to_local_bin(self) -> tuple[bool, str]:
         """Copy the running binary to ~/.local/bin/steam-audio-isolator. Returns (success, message)."""
+        if self.is_flatpak():
+            return (
+                False,
+                "Not used for Flatpak. Run: flatpak run "
+                f"{os.environ.get('FLATPAK_ID', 'io.github.crashman79.steam-audio-isolator')}",
+            )
         if not self.is_frozen():
-            return False, "Only available when running the standalone binary."
+            return False, "Only available when running the standalone (one-file) binary."
         try:
             self.install_bin_dir.mkdir(parents=True, exist_ok=True)
             shutil.copy2(sys.executable, self.install_bin_path)
@@ -232,7 +251,7 @@ class ConfigManager:
     def get_autostart_desktop_content(self, exec_path: str, icon_path: Optional[str] = None) -> str:
         """Return desktop file content for XDG autostart."""
         exec_val = self._quote_exec(exec_path)
-        icon_line = f"Icon={icon_path}\n" if icon_path else "Icon=steam-audio-isolator\n"
+        icon_line = _desktop_icon_line(icon_path)
         return (
             "[Desktop Entry]\n"
             "Type=Application\n"
@@ -280,7 +299,7 @@ class ConfigManager:
     def get_desktop_entry_content(self, exec_path: str, icon_path: Optional[str] = None) -> str:
         """Return desktop file content for application menu."""
         exec_val = self._quote_exec(exec_path)
-        icon_line = f"Icon={icon_path}\n" if icon_path else "Icon=steam-audio-isolator\n"
+        icon_line = _desktop_icon_line(icon_path)
         return (
             "[Desktop Entry]\n"
             "Version=1.0\n"

@@ -19,6 +19,8 @@ UPDATES_CACHE_DIR = Path.home() / ".cache" / "steam-audio-isolator"
 UPDATES_NEW_BINARY = UPDATES_CACHE_DIR / "steam-audio-isolator.new"
 LOCK_FILE_PATH = UPDATES_CACHE_DIR.parent / "steam-audio-isolator.lock"
 RELEASE_ASSET_NAME = "steam-audio-isolator"
+# GitHub Releases bundle (matches build-release.yml)
+RELEASE_FLATPAK_ASSET = "steam-audio-isolator-x86_64.flatpak"
 
 
 def _ssl_context():
@@ -52,6 +54,10 @@ def is_frozen() -> bool:
     return getattr(__import__("sys"), "frozen", False)
 
 
+def is_flatpak() -> bool:
+    return bool(os.environ.get("FLATPAK_ID", "").strip())
+
+
 def _fetch_url(url: str, timeout: int = 10, context: Optional[ssl.SSLContext] = None):
     """GET url with optional SSL context. On SSLError, returns (None, error_msg)."""
     ctx = context or _ssl_context()
@@ -67,10 +73,18 @@ def _fetch_url(url: str, timeout: int = 10, context: Optional[ssl.SSLContext] = 
         return None, str(e)
 
 
-def check_for_updates(current_version: str) -> Tuple[bool, str, Optional[str], Optional[str]]:
+def check_for_updates(current_version: str) -> Tuple[bool, str, Optional[str], Optional[str], Optional[str]]:
     """
     Call GitHub Releases API and compare latest tag with current_version.
-    Returns (success, user_message, latest_tag_or_None, download_url_or_None).
+
+    Returns:
+        (success, user_message, latest_tag_or_None, download_url_or_None, release_page_url_or_None).
+
+    * **Frozen (one-file):** ``download_url`` is the ``steam-audio-isolator`` release asset when present.
+    * **Flatpak:** compares the same GitHub tag to this build. Flathub does not expose a simple
+      in-app API; after publishing there, users normally run ``flatpak update``. ``download_url``
+      may point at ``steam-audio-isolator-x86_64.flatpak`` on the release for side-loading.
+      ``release_page_url`` is the GitHub release HTML page (open in browser).
     """
     data_bytes, err = _fetch_url(GITHUB_RELEASES_API, timeout=10)
     if err and "certificate" in err.lower():
@@ -83,27 +97,43 @@ def check_for_updates(current_version: str) -> Tuple[bool, str, Optional[str], O
         except Exception:
             pass
     if err or not data_bytes:
-        return False, f"Update check failed: {err or 'Unknown error'}", None, None
+        return False, f"Update check failed: {err or 'Unknown error'}", None, None, None
     try:
         data = json.loads(data_bytes.decode())
     except Exception as e:
-        return False, f"Update check failed: {str(e)}", None, None
+        return False, f"Update check failed: {str(e)}", None, None, None
 
     tag = data.get("tag_name") or ""
+    release_page = (data.get("html_url") or "").strip() or None
     assets = data.get("assets") or []
     download_url = None
-    for a in assets:
-        if a.get("name") == RELEASE_ASSET_NAME:
-            download_url = a.get("browser_download_url")
-            break
+    if is_flatpak():
+        for a in assets:
+            if a.get("name") == RELEASE_FLATPAK_ASSET:
+                download_url = a.get("browser_download_url")
+                break
+    if download_url is None and not is_flatpak():
+        for a in assets:
+            if a.get("name") == RELEASE_ASSET_NAME:
+                download_url = a.get("browser_download_url")
+                break
 
     current_tup = _parse_version(current_version)
     latest_tup = _parse_version(tag)
     if latest_tup > current_tup:
-        return True, f"Update available: {tag}", tag, download_url
+        msg = f"Update available: {tag}"
+        if is_flatpak():
+            msg += (
+                "\n\n• Installed from Flathub: run: flatpak update\n"
+                "• GitHub bundle: use “Open release page” or install the .flatpak from that release."
+            )
+        return True, msg, tag, download_url, release_page
     if latest_tup <= current_tup:
-        return True, "You have the latest version.", tag, None
-    return True, "You have the latest version.", tag, None
+        msg = "You have the latest version according to GitHub Releases."
+        if is_flatpak():
+            msg += "\n\nIf you use Flathub, you can still run: flatpak update"
+        return True, msg, tag, None, release_page
+    return True, "You have the latest version.", tag, None, release_page
 
 
 def download_update(download_url: str) -> Tuple[bool, str]:
