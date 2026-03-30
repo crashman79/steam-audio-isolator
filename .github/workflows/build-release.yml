@@ -54,8 +54,8 @@ jobs:
     - name: Build Flatpak bundle
       run: |
         sudo apt-get update
-        sudo apt-get install -y flatpak flatpak-builder python3-pil
-        python3 generate_icon.py
+        sudo apt-get install -y flatpak flatpak-builder appstream
+        .venv/bin/python generate_icon.py
         flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
         flatpak install -y --noninteractive flathub org.freedesktop.Platform//24.08 org.freedesktop.Sdk//24.08
         flatpak-builder --user --repo=repo --default-branch=stable --force-clean build-flatpak \
