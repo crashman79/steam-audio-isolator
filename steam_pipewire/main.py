@@ -47,8 +47,8 @@ from steam_pipewire.ui.main_window import MainWindow
 from steam_pipewire.utils.config import ConfigManager
 
 
-# Set up logging
-log_file = Path.home() / ".cache" / "steam-audio-isolator.log"
+# Set up logging (under ~/.cache/steam-audio-isolator/ for narrow Flatpak xdg-cache:rw)
+log_file = Path.home() / ".cache" / "steam-audio-isolator" / "steam-audio-isolator.log"
 log_file.parent.mkdir(parents=True, exist_ok=True)
 
 # File handler with DEBUG, console with INFO only
@@ -108,7 +108,7 @@ def acquire_lock():
     
     Returns the lock file object if successful, None if another instance is running.
     """
-    lock_dir = Path.home() / ".cache"
+    lock_dir = Path.home() / ".cache" / "steam-audio-isolator"
     lock_dir.mkdir(parents=True, exist_ok=True)
     lock_file_path = lock_dir / "steam-audio-isolator.lock"
     
