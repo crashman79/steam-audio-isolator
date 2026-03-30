@@ -42,6 +42,26 @@ jobs:
       run: |
         chmod +x build.sh
         ./build.sh
+
+    - name: Sync Flatpak AppStream release (tags only)
+      if: startsWith(github.ref, 'refs/tags/')
+      run: |
+        VERSION=${GITHUB_REF#refs/tags/v}
+        DATE=$(date +%Y-%m-%d)
+        sed -i "s|version=\"[0-9.]*\" date=\"[0-9-]*\"|version=\"${VERSION}\" date=\"${DATE}\"|" \
+          flatpak/io.github.crashman79.steam-audio-isolator.metainfo.xml
+
+    - name: Build Flatpak bundle
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y flatpak flatpak-builder python3-pil
+        python3 generate_icon.py
+        flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+        flatpak install -y --noninteractive flathub org.freedesktop.Platform//24.08 org.freedesktop.Sdk//24.08
+        flatpak-builder --user --repo=repo --default-branch=stable --force-clean build-flatpak \
+          flatpak/io.github.crashman79.steam-audio-isolator.yml
+        flatpak build-bundle repo steam-audio-isolator-x86_64.flatpak \
+          io.github.crashman79.steam-audio-isolator stable
     
     - name: Get version
       id: version
@@ -67,7 +87,9 @@ jobs:
       with:
         files: |
           dist/steam-audio-isolator-linux-x86_64.tar.gz
+          dist/steam-audio-isolator-linux-x86_64-portable.tar.gz
           dist/release/steam-audio-isolator
+          steam-audio-isolator-x86_64.flatpak
         body_path: release_changelog.txt
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -76,4 +98,7 @@ jobs:
       uses: actions/upload-artifact@v5
       with:
         name: steam-audio-isolator-linux-x86_64
-        path: dist/steam-audio-isolator-linux-x86_64.tar.gz
+        path: |
+          dist/steam-audio-isolator-linux-x86_64.tar.gz
+          dist/steam-audio-isolator-linux-x86_64-portable.tar.gz
+          steam-audio-isolator-x86_64.flatpak

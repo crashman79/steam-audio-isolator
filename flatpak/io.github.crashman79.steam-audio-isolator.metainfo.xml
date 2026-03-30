@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.crashman79.steam-audio-isolator</id>
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Steam Audio Isolator</name>
+  <summary>Route game audio into Steam recording on Linux (PipeWire)</summary>
+  <description>
+    <p>Steam Audio Isolator discovers PipeWire playback streams and creates direct links
+    to Steam&apos;s game-recording input so captures exclude browser and desktop audio.</p>
+    <p>Requires PipeWire and Steam with game recording enabled on the host.</p>
+  </description>
+  <!-- Icons: shipped under hicolor/*/apps/; flatpak-builder/appstreamcli compose picks them up -->
+  <categories>
+    <category>Audio</category>
+    <category>Utility</category>
+  </categories>
+  <keywords>
+    <keyword>audio</keyword>
+    <keyword>pipewire</keyword>
+    <keyword>steam</keyword>
+    <keyword>recording</keyword>
+  </keywords>
+  <launchable type="desktop-id">io.github.crashman79.steam-audio-isolator.desktop</launchable>
+  <url type="homepage">https://github.com/crashman79/steam-audio-isolator</url>
+  <developer id="io.github.crashman79">
+    <name>crashman79</name>
+  </developer>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.3.11" date="2026-03-30"/>
+  </releases>
+</component>

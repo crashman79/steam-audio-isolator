@@ -91,10 +91,66 @@ tar -czpf "dist/${RELEASE_NAME}.tar.gz" -C dist/release .
 SIZE=$(du -h "dist/${RELEASE_NAME}.tar.gz" | cut -f1)
 
 echo ""
+echo "Building portable bundle (venv + launcher; recommended when onefile is fragile)..."
+PORTABLE_BASE="${SCRIPT_DIR}/dist"
+PORTABLE="${PORTABLE_BASE}/steam-audio-isolator-portable"
+rm -rf "${PORTABLE}"
+mkdir -p "${PORTABLE}"
+cp -a "${SCRIPT_DIR}/steam_pipewire" "${PORTABLE}/"
+cp "${SCRIPT_DIR}/requirements.txt" "${PORTABLE}/"
+if [ -f "${SCRIPT_DIR}/steam-audio-isolator-256.png" ]; then
+  cp "${SCRIPT_DIR}/steam-audio-isolator-256.png" "${PORTABLE}/"
+fi
+cp "${SCRIPT_DIR}/packaging/portable-launcher.sh" "${PORTABLE}/steam-audio-isolator"
+chmod +x "${PORTABLE}/steam-audio-isolator"
+
+"${VENV_PY}" -m venv "${PORTABLE}/.venv"
+"${PORTABLE}/.venv/bin/pip" install --upgrade pip
+"${PORTABLE}/.venv/bin/pip" install --no-cache-dir -r "${PORTABLE}/requirements.txt"
+
+cat > "${PORTABLE}/README.txt" << 'PREADME'
+Steam Audio Isolator — portable directory bundle
+
+RUN
+===
+
+  cd steam-audio-isolator-portable
+  ./steam-audio-isolator
+
+This uses a normal Python venv and PyQt5 wheels (no PyInstaller). It tends to
+behave better across Wayland vs X11 and Ubuntu vs Arch than the single-file
+binary, at the cost of a larger download.
+
+REFRESH ON A NEW PC / AFTER UPGRADE
+===================================
+
+  ./.venv/bin/pip install --no-cache-dir -r requirements.txt
+
+ADVANCED: distro PyQt5 (optional)
+=================================
+
+  rm -rf .venv && python3 -m venv --system-site-packages .venv
+  ./.venv/bin/pip install --no-cache-dir pydbus darkdetect 'certifi>=2023'
+
+  Install your distro's PyQt5 for Python (e.g. python-pyqt5) so the venv sees it via system-site-packages.
+
+REQUIREMENTS
+============
+
+- Linux x86_64 with PipeWire, pw-cli, pw-dump
+- Steam with game recording enabled
+PREADME
+
+PORTABLE_TAR="steam-audio-isolator-linux-x86_64-portable.tar.gz"
+tar -czpf "${PORTABLE_BASE}/${PORTABLE_TAR}" -C "${PORTABLE_BASE}" steam-audio-isolator-portable
+PORTABLE_SIZE=$(du -h "${PORTABLE_BASE}/${PORTABLE_TAR}" | cut -f1)
+
+echo ""
 echo "=== Build Complete! ==="
 echo ""
-echo "Release: dist/${RELEASE_NAME}.tar.gz (size: $SIZE)"
-echo "Contents: steam-audio-isolator, README.txt"
+echo "One-file:  dist/${RELEASE_NAME}.tar.gz (size: $SIZE)"
+echo "Portable:  dist/${PORTABLE_TAR} (size: $PORTABLE_SIZE)"
 echo ""
-echo "No install step. User runs the binary; app manages config, menu, and autostart via Settings."
+echo "One-file: run steam-audio-isolator; smallest download; can be picky on some setups."
+echo "Portable: unpack steam-audio-isolator-portable/ and run ./steam-audio-isolator — uses venv PyQt (more flexible)."
 echo ""

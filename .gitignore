@@ -28,6 +28,11 @@ MANIFEST
 # PyInstaller
 *.spec
 
+# Flatpak local build outputs
+*.flatpak
+build-flatpak/
+repo/
+
 # Virtual environments
 .venv/
 venv/

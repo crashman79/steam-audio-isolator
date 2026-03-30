@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Steam Audio Isolator
+Comment=Isolate game audio for clean Steam game recording
+Exec=steam-audio-isolator
+Icon=io.github.crashman79.steam-audio-isolator
+Terminal=false
+Categories=Audio;Utility;
+Keywords=audio;pipewire;steam;recording;
+StartupNotify=true

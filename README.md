@@ -113,29 +113,54 @@ This results in cluttered recordings with unwanted sounds mixing into your gamep
 
 ## Installation
 
-Single binary, no installation step. The app manages config, application menu, and autostart itself.
+### Flatpak (recommended)
 
-1. Download the Linux binary from [Releases](https://github.com/crashman79/steam-audio-isolator/releases) (e.g. `steam-audio-isolator-linux-x86_64.tar.gz`).
-2. Extract and run:
-   ```bash
-   tar -xzf steam-audio-isolator-linux-x86_64.tar.gz
-   cd steam-audio-isolator-linux-x86_64
-   chmod +x steam-audio-isolator
-   ./steam-audio-isolator
-   ```
-3. On first run the app creates config at `~/.config/steam-audio-isolator/`. Use **Settings** in the app to add it to your application menu or to launch at login if you want.
-
-No Python, no pip, no install script. Run the binary; the app handles the rest.
-
-### Building the binary (developers)
+Stable Qt/runtime on top of [Flathub](https://flathub.org)-style installs; `pw-cli` / `pw-dump` are bundled; updates with `flatpak update`.
 
 ```bash
-git clone https://github.com/crashman79/steam-audio-isolator.git
-cd steam-audio-isolator
-pip install -r requirements.txt pyinstaller
-./build_release.sh
-./dist/steam-audio-isolator
+flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+# After the app is published on Flathub:
+flatpak install flathub io.github.crashman79.steam-audio-isolator
+flatpak run io.github.crashman79.steam-audio-isolator
 ```
+
+**Build and install locally from this repo:**
+
+```bash
+flatpak install -y flathub org.freedesktop.Platform//24.08 org.freedesktop.Sdk//24.08
+flatpak-builder --user --install --default-branch=stable --force-clean build-dir flatpak/io.github.crashman79.steam-audio-isolator.yml
+```
+
+See `flatpak/README.md` for details, permissions, and submitting to Flathub (generated pip sources).
+
+On first run the app uses your normal XDG config/cache/data dirs. **About → Updates** compares your build to **GitHub Releases** (needs network). After you publish on **Flathub**, installs update with `flatpak update`—there is no Flathub HTTP API for in-app version checks. Release tags attach **`steam-audio-isolator-x86_64.flatpak`**. Publishing: `flatpak/README.md`, [Flathub submission](https://docs.flathub.org/docs/for-app-authors/submission), [Flatpak publishing](https://docs.flatpak.org/en/latest/publishing.html).
+
+### Single-file binary (legacy)
+
+Smallest download from [Releases](https://github.com/crashman79/steam-audio-isolator); can be fragile with bundled Qt on some setups. In-app updater downloads this artifact.
+
+```bash
+tar -xzf steam-audio-isolator-linux-x86_64.tar.gz
+chmod +x steam-audio-isolator
+./steam-audio-isolator
+```
+
+### Portable bundle (venv, no PyInstaller)
+
+If the single-file build is fragile on your system (crashes, wrong Qt stack), use the **portable** tarball from [Releases](https://github.com/crashman79/steam-audio-isolator/releases): `steam-audio-isolator-linux-x86_64-portable.tar.gz`.
+
+```bash
+tar -xzf steam-audio-isolator-linux-x86_64-portable.tar.gz
+cd steam-audio-isolator-portable
+./steam-audio-isolator
+```
+
+This is a directory with a local venv and normal PyQt5 wheels—no PyInstaller. After a distro upgrade or on a new machine, refresh: `./.venv/bin/pip install --no-cache-dir -r requirements.txt`. See `README.txt` inside the bundle for an optional `--system-site-packages` workflow with distro `python-pyqt5`.
+
+### Building releases (developers)
+
+- **Flatpak:** `flatpak-builder` as above; manifest in `flatpak/`.
+- **One-file + portable tarballs:** `pip install -r requirements.txt pyinstaller && ./build.sh`
 
 ### Requirements
 
