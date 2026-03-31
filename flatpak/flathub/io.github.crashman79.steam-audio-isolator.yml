@@ -24,15 +24,18 @@ build-options:
   env:
     BASEAPP_REMOVE_WEBENGINE: '1'
 
-# network: About tab checks GitHub Releases over HTTPS. dbus: Qt tray + desktop notifications.
+# dbus: Qt tray + desktop notifications (no network: updates via flatpak/software center).
 finish-args:
   - --share=ipc
-  - --share=network
   - --socket=fallback-x11
   - --socket=wayland
   - --device=dri
   - --talk-name=org.freedesktop.Notifications
   - --talk-name=org.kde.StatusNotifierWatcher
+  # Qt tray icons register as a StatusNotifierItem and need to own a unique bus name.
+  - --own-name=org.kde.StatusNotifierItem.*
+  - --talk-name=org.freedesktop.StatusNotifierWatcher
+  - --own-name=org.freedesktop.StatusNotifierItem.*
   - --filesystem=xdg-run/pipewire-0
   - --filesystem=xdg-config/steam-audio-isolator:create
   - --filesystem=xdg-config/autostart:create

@@ -1,8 +1,6 @@
-# Local build (from repo root, after: git submodule update / flatpak install flathub dependencies):
-#   flatpak install -y flathub org.freedesktop.Platform//24.08 org.freedesktop.Sdk//24.08
-#   flatpak-builder --user --install --force-clean build-dir flatpak/io.github.crashman79.steam-audio-isolator.yml
-#
-# Flathub: submit manifest + generated python-deps (flatpak-builder-tools pip generator) in a separate flathub repo.
+# CI: .github/workflows/flatpak.yml and build-release.yml
+# Local: flatpak install flathub org.freedesktop.Platform//24.08 org.freedesktop.Sdk//24.08
+#        flatpak-builder --user --install --force-clean build-dir flatpak/io.github.crashman79.steam-audio-isolator.yml
 
 app-id: io.github.crashman79.steam-audio-isolator
 branch: stable
@@ -11,15 +9,19 @@ runtime-version: '24.08'
 sdk: org.freedesktop.Sdk
 command: steam-audio-isolator
 
-# network: About tab checks GitHub Releases. dbus: Qt tray + notifications.
+# dbus: Qt tray + notifications. No network (Flatpak updates via flatpak/software center).
 finish-args:
   - --share=ipc
-  - --share=network
   - --socket=fallback-x11
   - --socket=wayland
   - --device=dri
   - --talk-name=org.freedesktop.Notifications
   - --talk-name=org.kde.StatusNotifierWatcher
+  # Qt tray icons register as a StatusNotifierItem and need to own a unique bus name.
+  # Some desktops also use the freedesktop.org naming.
+  - --own-name=org.kde.StatusNotifierItem.*
+  - --talk-name=org.freedesktop.StatusNotifierWatcher
+  - --own-name=org.freedesktop.StatusNotifierItem.*
   - --filesystem=xdg-run/pipewire-0
   - --filesystem=xdg-config/steam-audio-isolator:create
   - --filesystem=xdg-config/autostart:create
@@ -69,7 +71,7 @@ modules:
         - --share=network
     build-commands:
       - pip3 install --verbose --exists-action=i --no-build-isolation --prefix=${FLATPAK_DEST}
-          "PyQt5==5.15.11" "pydbus==0.6.0" "darkdetect==0.8.0" "certifi>=2023"
+          "PyQt5==5.15.11" "pydbus==0.6.0" "darkdetect==0.8.0"
       - pip3 install --verbose --exists-action=i --no-build-isolation --prefix=${FLATPAK_DEST} --no-deps .
       - rm -f ${FLATPAK_DEST}/share/applications/steam-audio-isolator.desktop
       - install -Dpm644 flatpak/io.github.crashman79.steam-audio-isolator.desktop ${FLATPAK_DEST}/share/applications/io.github.crashman79.steam-audio-isolator.desktop
