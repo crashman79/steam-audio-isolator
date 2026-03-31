@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Theme management for Steam Audio Isolator"""
 
+import os
 import sys
 from enum import Enum
 from PyQt5.QtWidgets import QApplication
@@ -46,7 +47,7 @@ class ThemeManager:
                 return Theme.DARK
         except Exception:
             pass
-        # Fallback on Linux: Qt may have the real system palette before we override it (e.g. KDE, XFCE)
+        # Fallback on Linux: Qt may have the real system palette before we override it (e.g. KDE, XFCE).
         if sys.platform.startswith("linux"):
             try:
                 app = QApplication.instance()
@@ -71,14 +72,23 @@ class ThemeManager:
         """Apply theme to the application"""
         if app is None:
             return
+        # "System" should actually follow the desktop theme. Do not force Fusion or a global stylesheet,
+        # otherwise we override the platform theme and end up stuck in light mode on some setups.
         if theme == Theme.SYSTEM:
-            theme = ThemeManager.get_system_theme()
-        
+            try:
+                app.setStyleSheet("")
+                app.setPalette(app.style().standardPalette())
+                # Leave the style unchanged so the platform theme can apply (GNOME/KDE/Adwaita/etc).
+            except Exception:
+                pass
+            return
+
         palette = ThemeManager._create_palette(theme)
         stylesheet = ThemeManager._create_stylesheet(theme)
-        
-        app.setPalette(palette)
+
+        # For explicit light/dark, use a consistent widget style.
         app.setStyle('Fusion')
+        app.setPalette(palette)
         app.setStyleSheet(stylesheet)
     
     @staticmethod
