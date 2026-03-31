@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Theme management for Steam Audio Isolator"""
 
-import os
 import sys
 from enum import Enum
 from PyQt5.QtWidgets import QApplication
