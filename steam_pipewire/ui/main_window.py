@@ -8,10 +8,10 @@ from PyQt5.QtWidgets import (
     QTabWidget, QTextEdit, QSpinBox, QLineEdit, QSystemTrayIcon, QMenu, QAction,
     QApplication, QSizePolicy, QTableWidget, QTableWidgetItem, QHeaderView,
 )
-from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer, QUrl
+from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
 from PyQt5.QtGui import (
     QColor, QFont, QKeySequence, QIcon, QPixmap, QPainter, QPen, QBrush, QPainterPath,
-    QGuiApplication, QCursor, QDesktopServices,
+    QGuiApplication, QCursor,
 )
 from pathlib import Path
 import os
@@ -232,7 +232,8 @@ class SettingsDialog(QWidget):
             copy_bin_btn.setVisible(False)
         tray_layout.addWidget(copy_bin_btn)
         self.copy_bin_status = QLabel("")
-        self.copy_bin_status.setStyleSheet("color: #666; font-size: 10px;")
+        # Avoid hard-coded light colors so "System" theme can follow the platform palette.
+        self.copy_bin_status.setStyleSheet("font-size: 10px;")
         if self.config.is_flatpak():
             self.copy_bin_status.setVisible(False)
         tray_layout.addWidget(self.copy_bin_status)
@@ -406,7 +407,7 @@ class MainWindow(QMainWindow):
             info_text = "Closing will restore default routing" if restore_on_close else "Closing will keep current routing"
         
         self.info_note = QLabel(info_text)
-        self.info_note.setStyleSheet("color: #1976d2; font-size: 10px; padding: 5px;")
+        self.info_note.setStyleSheet("font-size: 10px; padding: 5px;")
         self.info_note.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         header_layout.addWidget(self.info_note)
         
@@ -414,7 +415,7 @@ class MainWindow(QMainWindow):
         
         # Status label
         self.status_label = QLabel("Detecting audio sources...")
-        self.status_label.setStyleSheet("color: #666; font-size: 11px;")
+        self.status_label.setStyleSheet("font-size: 11px;")
         main_layout.addWidget(self.status_label)
 
         # Create tabs for different views
@@ -705,7 +706,8 @@ class MainWindow(QMainWindow):
         self.routing_instructions = QLabel()
         self.routing_instructions.setTextFormat(Qt.RichText)
         self.routing_instructions.setWordWrap(True)
-        self.routing_instructions.setStyleSheet("color: #333; padding: 8px; background-color: #fff9e6; border-left: 4px solid #ffc107; border-radius: 3px;")
+        # Keep layout styling but let colors come from the platform theme.
+        self.routing_instructions.setStyleSheet("padding: 8px; border-left: 4px solid #ffc107; border-radius: 3px;")
         self._update_routing_instructions()
         layout.addWidget(self.routing_instructions)
 
@@ -754,7 +756,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(intro)
 
         self.routes_status_label = QLabel("—")
-        self.routes_status_label.setStyleSheet("color: #666; font-size: 11px;")
+        self.routes_status_label.setStyleSheet("font-size: 11px;")
         layout.addWidget(self.routes_status_label)
 
         self.routes_table = QTableWidget(0, 4)
@@ -876,38 +878,37 @@ class MainWindow(QMainWindow):
         # Subtitle
         subtitle = QLabel("Isolate game audio for clean Steam game recording")
         subtitle.setAlignment(Qt.AlignCenter)
-        subtitle.setStyleSheet("color: #666; font-size: 12px; margin-bottom: 10px;")
+        subtitle.setStyleSheet("font-size: 12px; margin-bottom: 10px;")
         layout.addWidget(subtitle)
         
-        # Updates: one-file binary (download + restart) or Flatpak / GitHub (check vs Releases; Flathub uses flatpak update)
+        # Updates: in-app GitHub check + download only for standalone frozen binary; Flatpak uses system updater
         try:
             from steam_pipewire.utils import updater
-            if updater.is_frozen() or updater.is_flatpak():
-                _flatpak = updater.is_flatpak()
+            if updater.is_flatpak():
+                fp_updates = QLabel(
+                    "<b>Updates</b><br>This Flatpak is updated with your software center or "
+                    "<code>flatpak update</code> — no in-app update check."
+                )
+                fp_updates.setWordWrap(True)
+                layout.addWidget(fp_updates)
+            elif updater.is_frozen():
                 update_group = QGroupBox("Updates")
                 update_layout = QVBoxLayout()
-                _hint = (
-                    "Compares this build’s version to the latest tag on GitHub Releases. "
-                    "Flathub has no in-app update API—after publishing there, use flatpak update."
-                    if _flatpak
-                    else "Click Check for updates to see if a new version is available on GitHub."
+                update_status = QLabel(
+                    "Click Check for updates to compare this build to the latest release on GitHub."
                 )
-                update_status = QLabel(_hint)
                 update_status.setWordWrap(True)
                 update_layout.addWidget(update_status)
                 btn_row = QHBoxLayout()
                 check_btn = QPushButton("Check for updates")
                 download_btn = QPushButton("Download update")
                 restart_btn = QPushButton("Restart to apply update")
-                open_release_btn = QPushButton("Open GitHub release page")
                 btn_row.addWidget(check_btn)
                 btn_row.addWidget(download_btn)
                 btn_row.addWidget(restart_btn)
-                btn_row.addWidget(open_release_btn)
                 btn_row.addStretch()
-                download_btn.setVisible(not _flatpak)
-                restart_btn.setVisible(not _flatpak and updater.has_pending_update())
-                open_release_btn.setVisible(False)
+                download_btn.setVisible(False)
+                restart_btn.setVisible(updater.has_pending_update())
                 update_layout.addLayout(btn_row)
                 update_group.setLayout(update_layout)
                 layout.addWidget(update_group)
@@ -915,28 +916,18 @@ class MainWindow(QMainWindow):
                 widget.update_download_btn = download_btn
                 widget.update_restart_btn = restart_btn
                 widget.update_download_url = None
-                widget._release_page_url = ""
                 check_thread = [None]
                 download_thread = [None]
 
                 def on_check_result(success, message, latest_tag, download_url, release_page_url):
                     update_status.setText(message)
                     widget.update_download_url = download_url
-                    widget._release_page_url = (release_page_url or "").strip()
-                    open_release_btn.setVisible(_flatpak and bool(widget._release_page_url))
-                    if _flatpak:
-                        return
                     if download_url:
                         download_btn.setVisible(True)
                         restart_btn.setVisible(False)
                     else:
                         download_btn.setVisible(False)
                         restart_btn.setVisible(updater.has_pending_update())
-
-                def on_open_release_clicked():
-                    u = getattr(widget, "_release_page_url", "") or ""
-                    if u:
-                        QDesktopServices.openUrl(QUrl(u))
 
                 def on_check_clicked():
                     check_btn.setEnabled(False)
@@ -973,7 +964,6 @@ class MainWindow(QMainWindow):
                 check_btn.clicked.connect(on_check_clicked)
                 download_btn.clicked.connect(on_download_clicked)
                 restart_btn.clicked.connect(on_restart_clicked)
-                open_release_btn.clicked.connect(on_open_release_clicked)
         except Exception:
             pass
 
@@ -1171,7 +1161,7 @@ class MainWindow(QMainWindow):
             except Exception:
                 pass
             self.status_label.setText("✗ Source detection timed out (PipeWire issue)")
-            self.status_label.setStyleSheet("color: #f44336; font-size: 11px;")
+            self.status_label.setStyleSheet("font-size: 11px;")
     
     def start_auto_detect(self):
         """Start automatic source detection polling with configurable interval"""
@@ -1246,7 +1236,7 @@ class MainWindow(QMainWindow):
             if current_sources:
                 if not (new_games and auto_apply_enabled):
                     self.status_label.setText(f"Found {len(current_sources)} audio source(s)")
-                    self.status_label.setStyleSheet("color: #4CAF50; font-size: 11px;")
+                    self.status_label.setStyleSheet("font-size: 11px;")
 
     def _auto_apply_new_games(self, new_game_names=None):
         """Automatically apply routing when new games are detected.
@@ -1432,10 +1422,10 @@ class MainWindow(QMainWindow):
 
         if not sources:
             self.status_label.setText("⚠ No audio sources detected (is PipeWire running?)")
-            self.status_label.setStyleSheet("color: #ff9800; font-size: 11px;")
+            self.status_label.setStyleSheet("font-size: 11px;")
         else:
             self.status_label.setText(f"Found {len(sources)} audio source(s)")
-            self.status_label.setStyleSheet("color: #4CAF50; font-size: 11px;")
+            self.status_label.setStyleSheet("font-size: 11px;")
 
         # Games already running when the first scan finishes: auto-apply once (timer may not fire a "change")
         if not self._startup_auto_apply_done and any(
@@ -1460,7 +1450,7 @@ class MainWindow(QMainWindow):
         if self.source_detection_timeout:
             self.source_detection_timeout.stop()
         self.status_label.setText(f"✗ Error detecting sources: {error}")
-        self.status_label.setStyleSheet("color: #f44336; font-size: 11px;")
+        self.status_label.setStyleSheet("font-size: 11px;")
 
     def update_sources_list(self):
         """Update the UI with detected sources - optimized for speed"""
@@ -1478,7 +1468,7 @@ class MainWindow(QMainWindow):
 
         if not self.sources:
             no_sources_label = QLabel("No audio sources detected")
-            no_sources_label.setStyleSheet("color: gray;")
+            no_sources_label.setStyleSheet("")
             self.sources_layout.addWidget(no_sources_label)
             self.sources_group.blockSignals(False)
             return
@@ -1545,7 +1535,7 @@ class MainWindow(QMainWindow):
                 stream_purpose = source.get('stream_purpose', '')
                 if stream_purpose and source_type == 'Game':
                     estimate_label = QLabel(f"(guess: {stream_purpose})")
-                    estimate_label.setStyleSheet("color: #555; font-size: 10px; margin-left: 15px;")
+                    estimate_label.setStyleSheet("font-size: 10px; margin-left: 15px;")
                     estimate_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
                     estimate_label.setToolTip("Estimated based on audio buffer size - may be incorrect")
                     row_layout.addWidget(estimate_label)
@@ -1724,7 +1714,7 @@ class MainWindow(QMainWindow):
             self.routes_status_label.setText(
                 f"{ts} — No active routes to Steam recording."
             )
-            self.routes_status_label.setStyleSheet("color: #888; font-size: 11px;")
+            self.routes_status_label.setStyleSheet("font-size: 11px;")
             return
 
         self.routes_table.setUpdatesEnabled(False)
@@ -1746,13 +1736,13 @@ class MainWindow(QMainWindow):
         self.routes_status_label.setText(
             f"{ts} — {len(routes)} link(s) to Steam recording"
         )
-        self.routes_status_label.setStyleSheet("color: #666; font-size: 11px;")
+        self.routes_status_label.setStyleSheet("font-size: 11px;")
 
     def on_route_error(self, error):
         """Handle route update error"""
         self.routes_table.setRowCount(0)
         self.routes_status_label.setText(f"Error loading routes: {error}")
-        self.routes_status_label.setStyleSheet("color: #c62828; font-size: 11px;")
+        self.routes_status_label.setStyleSheet("font-size: 11px;")
 
     def update_system_info(self):
         """Update system information display"""
