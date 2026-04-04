@@ -17,7 +17,8 @@ from pathlib import Path
 import os
 from steam_pipewire.pipewire.source_detector import SourceDetector
 from steam_pipewire.pipewire.controller import PipeWireController
-from steam_pipewire.utils.config import ConfigManager
+from steam_pipewire.utils.config import ConfigManager, flatpak_app_id
+from steam_pipewire.utils.xdg_paths import app_cache_dir, xdg_data_home
 from steam_pipewire.ui.theme import ThemeManager, Theme
 
 
@@ -101,8 +102,12 @@ class SettingsDialog(QWidget):
         self._exec_path = exec_path or ""
         self.settings = config.load_settings()
         # Sync menu/autostart from actual files so UI reflects reality
-        self.settings['add_to_app_menu'] = config.is_desktop_entry_enabled()
-        self.settings['start_at_login'] = config.is_autostart_enabled()
+        if config.is_flatpak():
+            self.settings['add_to_app_menu'] = False
+            self.settings['start_at_login'] = False
+        else:
+            self.settings['add_to_app_menu'] = config.is_desktop_entry_enabled()
+            self.settings['start_at_login'] = config.is_autostart_enabled()
         self.init_ui()
     
     def init_ui(self):
@@ -126,6 +131,10 @@ class SettingsDialog(QWidget):
         current_theme = self.settings.get('theme', 'system')
         theme_index = {"light": 0, "dark": 1, "system": 2}.get(current_theme.lower(), 2)
         self.theme_combo.setCurrentIndex(theme_index)
+        self.theme_combo.setToolTip(
+            "System uses your desktop Qt style and palette (Flatpak needs session D-Bus access). "
+            "Light/Dark use the built-in Fusion look."
+        )
         self.theme_combo.currentIndexChanged.connect(self._on_settings_changed)
         theme_layout.addWidget(self.theme_combo)
         theme_layout.addStretch()
@@ -201,42 +210,40 @@ class SettingsDialog(QWidget):
         self.start_minimized_checkbox.stateChanged.connect(self._on_settings_changed)
         tray_layout.addWidget(self.start_minimized_checkbox)
         tray_layout.addWidget(QLabel("When enabled, the app will start with only the tray icon visible."))
-        self.start_at_login_checkbox = QCheckBox("Start Steam Audio Isolator when I log in")
-        self.start_at_login_checkbox.setChecked(self.settings.get('start_at_login', False))
-        self.start_at_login_checkbox.stateChanged.connect(self._on_settings_changed)
-        tray_layout.addWidget(self.start_at_login_checkbox)
-        _login_txt = (
-            "When enabled, creates ~/.config/autostart/steam-audio-isolator.desktop that launches this "
-            "Flatpak (flatpak run …). Click Save to apply."
-            if self.config.is_flatpak()
-            else "When enabled, creates ~/.config/autostart/steam-audio-isolator.desktop. Click Save to apply."
-        )
-        tray_layout.addWidget(QLabel(_login_txt))
-        self.add_to_app_menu_checkbox = QCheckBox("Add to application menu")
-        self.add_to_app_menu_checkbox.setChecked(self.settings.get('add_to_app_menu', False))
-        self.add_to_app_menu_checkbox.stateChanged.connect(self._on_settings_changed)
-        tray_layout.addWidget(self.add_to_app_menu_checkbox)
-        _menu_txt = (
-            "Flatpak already installs a menu entry. Enable this only if you want an extra "
-            "~/.local/share/applications/steam-audio-isolator.desktop (not required for the icon). "
-            "Does not use ~/.local/bin."
-            if self.config.is_flatpak()
-            else "When enabled, creates ~/.local/share/applications/steam-audio-isolator.desktop "
-            "(and copies the one-file binary to ~/.local/bin when needed). Click Save to apply."
-        )
-        tray_layout.addWidget(QLabel(_menu_txt))
-        copy_bin_btn = QPushButton("Copy to ~/.local/bin")
-        copy_bin_btn.setToolTip("Install the binary to a PATH-friendly location (standalone binary only)")
-        copy_bin_btn.clicked.connect(self._on_copy_to_local_bin)
         if self.config.is_flatpak():
-            copy_bin_btn.setVisible(False)
-        tray_layout.addWidget(copy_bin_btn)
-        self.copy_bin_status = QLabel("")
-        # Avoid hard-coded light colors so "System" theme can follow the platform palette.
-        self.copy_bin_status.setStyleSheet("font-size: 10px;")
+            self.start_at_login_checkbox = None
+            tray_layout.addWidget(QLabel(
+                "Startup at login: add this Flatpak in your desktop session startup or autostart "
+                "applications (the entry from your software center). In-app autostart files are not "
+                "used for the Flatpak build."
+            ))
+        else:
+            self.start_at_login_checkbox = QCheckBox("Start Steam Audio Isolator when I log in")
+            self.start_at_login_checkbox.setChecked(self.settings.get('start_at_login', False))
+            self.start_at_login_checkbox.stateChanged.connect(self._on_settings_changed)
+            tray_layout.addWidget(self.start_at_login_checkbox)
+            tray_layout.addWidget(QLabel(
+                "When enabled, creates ~/.config/autostart/steam-audio-isolator.desktop. Click Save to apply."
+            ))
         if self.config.is_flatpak():
-            self.copy_bin_status.setVisible(False)
-        tray_layout.addWidget(self.copy_bin_status)
+            self.add_to_app_menu_checkbox = None
+            self.copy_bin_status = None
+        else:
+            self.add_to_app_menu_checkbox = QCheckBox("Add to application menu")
+            self.add_to_app_menu_checkbox.setChecked(self.settings.get('add_to_app_menu', False))
+            self.add_to_app_menu_checkbox.stateChanged.connect(self._on_settings_changed)
+            tray_layout.addWidget(self.add_to_app_menu_checkbox)
+            tray_layout.addWidget(QLabel(
+                "When enabled, creates ~/.local/share/applications/steam-audio-isolator.desktop "
+                "(and copies the one-file binary to ~/.local/bin when needed). Click Save to apply."
+            ))
+            copy_bin_btn = QPushButton("Copy to ~/.local/bin")
+            copy_bin_btn.setToolTip("Install the binary to a PATH-friendly location (standalone binary only)")
+            copy_bin_btn.clicked.connect(self._on_copy_to_local_bin)
+            tray_layout.addWidget(copy_bin_btn)
+            self.copy_bin_status = QLabel("")
+            self.copy_bin_status.setStyleSheet("font-size: 10px;")
+            tray_layout.addWidget(self.copy_bin_status)
         tray_group.setLayout(tray_layout)
         right.addWidget(tray_group)
         right.addStretch()
@@ -266,24 +273,35 @@ class SettingsDialog(QWidget):
         self.settings['auto_apply_games'] = self.auto_apply_checkbox.isChecked()
         self.settings['minimize_to_tray'] = self.tray_checkbox.isChecked()
         self.settings['start_minimized_to_tray'] = self.start_minimized_checkbox.isChecked()
-        self.settings['start_at_login'] = self.start_at_login_checkbox.isChecked()
-        self.settings['add_to_app_menu'] = self.add_to_app_menu_checkbox.isChecked()
+        if self.config.is_flatpak():
+            self.settings['start_at_login'] = False
+            self.settings['add_to_app_menu'] = False
+        else:
+            self.settings['start_at_login'] = self.start_at_login_checkbox.isChecked()
+            self.settings['add_to_app_menu'] = self.add_to_app_menu_checkbox.isChecked()
         self.settings['theme'] = theme_map.get(self.theme_combo.currentIndex(), 'system')
         
         self.config.save_settings(self.settings)
         errors = []
         icon_path = None
-        if self.settings['add_to_app_menu'] or self.settings['start_at_login']:
+        need_icon = not self.config.is_flatpak() and (
+            self.settings['start_at_login'] or self.settings['add_to_app_menu']
+        )
+        if need_icon:
             main_win = self.window()
             if hasattr(main_win, '_install_app_icon_to_hicolor'):
                 icon_path = main_win._install_app_icon_to_hicolor()
-        if self.settings['start_at_login']:
+        if self.config.is_flatpak():
+            self.config.disable_autostart()
+        elif self.settings['start_at_login']:
             ok, msg = self.config.enable_autostart(self._exec_path, icon_path)
             if not ok:
                 errors.append(f"Start at login: {msg}")
         else:
             self.config.disable_autostart()
-        if self.settings['add_to_app_menu']:
+        if self.config.is_flatpak():
+            self.config.disable_desktop_entry()
+        elif self.settings['add_to_app_menu']:
             ok, msg = self.config.enable_desktop_entry(self._exec_path, icon_path)
             if not ok:
                 errors.append(f"Application menu: {msg}")
@@ -305,6 +323,10 @@ class SettingsDialog(QWidget):
     
     def _on_copy_to_local_bin(self):
         """Copy the running binary to ~/.local/bin (standalone binary only)."""
+        if self.config.is_flatpak():
+            _, msg = self.config.install_to_local_bin()
+            QMessageBox.information(self, "Flatpak", msg)
+            return
         ok, msg = self.config.install_to_local_bin()
         self.copy_bin_status.setText(msg if ok else f"Not installed: {msg}")
         if ok:
@@ -340,13 +362,8 @@ class MainWindow(QMainWindow):
         self.routes_poll_timer = None
         self.route_update_thread = None
         
-        # Load settings
+        # Load settings (theme applied in main() before window creation)
         self.settings = self.config.load_settings()
-        
-        # Apply theme
-        theme_str = self.settings.get('theme', 'system').upper()
-        theme = Theme[theme_str] if theme_str in Theme.__members__ else Theme.SYSTEM
-        ThemeManager.apply_theme(QApplication.instance(), theme)
         
         # System tray
         self.tray_icon = None
@@ -617,8 +634,9 @@ class MainWindow(QMainWindow):
         import logging
         from pathlib import Path
         logger = logging.getLogger(__name__)
-        base = Path.home() / '.local' / 'share' / 'icons' / 'hicolor'
-        name = 'steam-audio-isolator.png'
+        base = xdg_data_home() / 'icons' / 'hicolor'
+        aid = flatpak_app_id()
+        name = f"{aid}.png" if aid else "steam-audio-isolator.png"
         icon_256_path = None
         for s in (48, 64, 128, 256):
             dir_path = base / f'{s}x{s}' / 'apps'
@@ -672,6 +690,8 @@ class MainWindow(QMainWindow):
 
     def maybe_prompt_install_once(self):
         """One-time prompt to install binary to ~/.local/bin when not already there."""
+        if self.config.is_flatpak():
+            return
         if not self.config.is_frozen():
             return
         if self.config.get_setting('install_prompt_shown'):
@@ -1003,8 +1023,8 @@ class MainWindow(QMainWindow):
             
             f"<p style='margin-top: 20px; color: #666; font-size: 10px;'>"
             f"Version {__import__('steam_pipewire').__version__} | "
-            f"Config: ~/.config/steam-audio-isolator/ | "
-            f"Logs: ~/.cache/steam-audio-isolator/steam-audio-isolator.log"
+            f"Config: {self.config.config_dir} | "
+            f"Logs: {app_cache_dir('steam-audio-isolator') / 'steam-audio-isolator.log'}"
             "</p>"
         )
         description.setWordWrap(True)

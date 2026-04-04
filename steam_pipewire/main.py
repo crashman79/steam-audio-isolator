@@ -5,28 +5,11 @@ import sys
 import os
 from pathlib import Path
 
-# --- When frozen, point SSL at certifi's bundle so HTTPS (e.g. update check) works ---
-if getattr(sys, "frozen", False):
-    _cafile = None
-    try:
-        import certifi
-        _cafile = certifi.where()
-    except Exception:
-        pass
-    if not _cafile or not os.path.isfile(_cafile):
-        _mei = getattr(sys, "_MEIPASS", None)
-        if _mei:
-            for _p in (os.path.join(_mei, "certifi", "cacert.pem"), os.path.join(_mei, "cacert.pem")):
-                if os.path.isfile(_p):
-                    _cafile = _p
-                    break
-    if _cafile and os.path.isfile(_cafile):
-        os.environ.setdefault("SSL_CERT_FILE", _cafile)
-        os.environ.setdefault("REQUESTS_CA_BUNDLE", _cafile)
+from steam_pipewire.utils.xdg_paths import app_cache_dir
 
 # --- Stale update cleanup: when running as built binary (and not from .new), remove leftover .new file ---
 if getattr(sys, "frozen", False):
-    new_path = Path.home() / ".cache" / "steam-audio-isolator" / "steam-audio-isolator.new"
+    new_path = app_cache_dir("steam-audio-isolator") / "steam-audio-isolator.new"
     if new_path.exists() and Path(sys.executable).resolve() != new_path.resolve():
         try:
             new_path.unlink()
@@ -44,11 +27,12 @@ import fcntl
 from PyQt5.QtWidgets import QApplication, QMessageBox
 from PyQt5.QtCore import QTimer
 from steam_pipewire.ui.main_window import MainWindow
-from steam_pipewire.utils.config import ConfigManager
+from steam_pipewire.ui.theme import ThemeManager, Theme
+from steam_pipewire.utils.config import ConfigManager, flatpak_app_id
 
 
-# Set up logging (under ~/.cache/steam-audio-isolator/ for narrow Flatpak xdg-cache:rw)
-log_file = Path.home() / ".cache" / "steam-audio-isolator" / "steam-audio-isolator.log"
+# Set up logging
+log_file = app_cache_dir("steam-audio-isolator") / "steam-audio-isolator.log"
 log_file.parent.mkdir(parents=True, exist_ok=True)
 
 # File handler with DEBUG, console with INFO only
@@ -94,9 +78,9 @@ def get_autostart_exec_path() -> str:
     """Return the command used to start this app (for autostart desktop file)."""
     if getattr(sys, 'frozen', False):
         return sys.executable
-    fp = os.environ.get("FLATPAK_ID", "").strip()
-    if fp:
-        return f"flatpak run {fp}"
+    aid = flatpak_app_id()
+    if aid:
+        return f"flatpak run {aid}"
     launcher = os.environ.get("STEAM_AUDIO_ISOLATOR_LAUNCHER", "").strip()
     if launcher and os.path.isfile(launcher) and os.access(launcher, os.X_OK):
         return launcher
@@ -108,7 +92,7 @@ def acquire_lock():
     
     Returns the lock file object if successful, None if another instance is running.
     """
-    lock_dir = Path.home() / ".cache" / "steam-audio-isolator"
+    lock_dir = app_cache_dir("steam-audio-isolator")
     lock_dir.mkdir(parents=True, exist_ok=True)
     lock_file_path = lock_dir / "steam-audio-isolator.lock"
     
@@ -127,10 +111,20 @@ def acquire_lock():
 def main():
     """Launch the application"""
     try:
+        # SinkSwitch: prefer native Wayland when available (Flatpak included); avoids XWayland quirks.
+        if sys.platform.startswith("linux") and os.environ.get("WAYLAND_DISPLAY"):
+            os.environ.setdefault("QT_QPA_PLATFORM", "wayland;xcb")
+
         # Try to acquire exclusive lock
         lock_file = acquire_lock()
         if lock_file is None:
             app = QApplication(sys.argv)
+            _install_excepthook()
+            _cfg0 = ConfigManager()
+            _s0 = _cfg0.load_settings()
+            _t0 = _s0.get("theme", "system").upper()
+            _th0 = Theme[_t0] if _t0 in Theme.__members__ else Theme.SYSTEM
+            ThemeManager.apply_theme(app, _th0)
             QMessageBox.warning(
                 None,
                 "Steam Audio Isolator",
@@ -145,12 +139,16 @@ def main():
         app = QApplication(sys.argv)
         _install_excepthook()
         app.setApplicationName("Steam Audio Isolator")
-        _dfn = os.environ.get("FLATPAK_ID", "").strip() or "steam-audio-isolator"
+        _dfn = flatpak_app_id() or "steam-audio-isolator"
         app.setDesktopFileName(_dfn)
+        config = ConfigManager()
+        settings = config.load_settings()
+        theme_str = settings.get("theme", "system").upper()
+        theme = Theme[theme_str] if theme_str in Theme.__members__ else Theme.SYSTEM
+        ThemeManager.apply_theme(app, theme)
         exec_path = get_autostart_exec_path()
         window = MainWindow(exec_path=exec_path)
-        config = ConfigManager()
-        start_minimized = config.get_setting('start_minimized_to_tray')
+        start_minimized = settings.get("start_minimized_to_tray")
         if start_minimized and window.tray_icon is not None and window.tray_icon.isVisible():
             # Keep window hidden; only tray icon visible — show popup so user notices
             QTimer.singleShot(800, window.show_tray_launch_notification)

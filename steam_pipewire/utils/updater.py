@@ -13,33 +13,17 @@ import ssl
 from pathlib import Path
 from typing import Tuple, Optional
 
+from steam_pipewire.utils.xdg_paths import app_cache_dir
+
 # Configurable constants
 GITHUB_RELEASES_API = "https://api.github.com/repos/crashman79/steam-audio-isolator/releases/latest"
-UPDATES_CACHE_DIR = Path.home() / ".cache" / "steam-audio-isolator"
+UPDATES_CACHE_DIR = app_cache_dir("steam-audio-isolator")
 UPDATES_NEW_BINARY = UPDATES_CACHE_DIR / "steam-audio-isolator.new"
-LOCK_FILE_PATH = UPDATES_CACHE_DIR.parent / "steam-audio-isolator.lock"
 RELEASE_ASSET_NAME = "steam-audio-isolator"
-# GitHub Releases bundle (matches build-release.yml)
-RELEASE_FLATPAK_ASSET = "steam-audio-isolator-x86_64.flatpak"
 
 
-def _ssl_context():
-    """SSL context using certifi's CA bundle when available (required for frozen/PyInstaller)."""
-    _cafile = None
-    try:
-        import certifi
-        _cafile = certifi.where()
-    except Exception:
-        pass
-    if not _cafile or not os.path.isfile(_cafile):
-        _mei = getattr(__import__("sys"), "_MEIPASS", None)
-        if _mei:
-            for _p in (os.path.join(_mei, "certifi", "cacert.pem"), os.path.join(_mei, "cacert.pem")):
-                if os.path.isfile(_p):
-                    _cafile = _p
-                    break
-    if _cafile and os.path.isfile(_cafile):
-        return ssl.create_default_context(cafile=_cafile)
+def _ssl_context() -> ssl.SSLContext:
+    """HTTPS for GitHub update check uses the default context (system CA store)."""
     return ssl.create_default_context()
 
 
@@ -55,7 +39,9 @@ def is_frozen() -> bool:
 
 
 def is_flatpak() -> bool:
-    return bool(os.environ.get("FLATPAK_ID", "").strip())
+    from steam_pipewire.utils.config import is_flatpak_runtime
+
+    return is_flatpak_runtime()
 
 
 def _fetch_url(url: str, timeout: int = 10, context: Optional[ssl.SSLContext] = None):
@@ -80,12 +66,10 @@ def check_for_updates(current_version: str) -> Tuple[bool, str, Optional[str], O
     Returns:
         (success, user_message, latest_tag_or_None, download_url_or_None, release_page_url_or_None).
 
-    * **Frozen (one-file):** ``download_url`` is the ``steam-audio-isolator`` release asset when present.
-    * **Flatpak:** compares the same GitHub tag to this build. Flathub does not expose a simple
-      in-app API; after publishing there, users normally run ``flatpak update``. ``download_url``
-      may point at ``steam-audio-isolator-x86_64.flatpak`` on the release for side-loading.
-      ``release_page_url`` is the GitHub release HTML page (open in browser).
+    **Standalone (frozen) binary only.** Flatpak builds do not use in-app updates (use ``flatpak update``).
     """
+    if is_flatpak():
+        return True, "Updates: use your software center or: flatpak update", None, None, None
     data_bytes, err = _fetch_url(GITHUB_RELEASES_API, timeout=10)
     if err and "certificate" in err.lower():
         # Fallback: retry without verification so user can still get updates
@@ -107,32 +91,17 @@ def check_for_updates(current_version: str) -> Tuple[bool, str, Optional[str], O
     release_page = (data.get("html_url") or "").strip() or None
     assets = data.get("assets") or []
     download_url = None
-    if is_flatpak():
-        for a in assets:
-            if a.get("name") == RELEASE_FLATPAK_ASSET:
-                download_url = a.get("browser_download_url")
-                break
-    if download_url is None and not is_flatpak():
-        for a in assets:
-            if a.get("name") == RELEASE_ASSET_NAME:
-                download_url = a.get("browser_download_url")
-                break
+    for a in assets:
+        if a.get("name") == RELEASE_ASSET_NAME:
+            download_url = a.get("browser_download_url")
+            break
 
     current_tup = _parse_version(current_version)
     latest_tup = _parse_version(tag)
     if latest_tup > current_tup:
-        msg = f"Update available: {tag}"
-        if is_flatpak():
-            msg += (
-                "\n\n• Installed from Flathub: run: flatpak update\n"
-                "• GitHub bundle: use “Open release page” or install the .flatpak from that release."
-            )
-        return True, msg, tag, download_url, release_page
+        return True, f"Update available: {tag}", tag, download_url, release_page
     if latest_tup <= current_tup:
-        msg = "You have the latest version according to GitHub Releases."
-        if is_flatpak():
-            msg += "\n\nIf you use Flathub, you can still run: flatpak update"
-        return True, msg, tag, None, release_page
+        return True, "You have the latest version according to GitHub Releases.", tag, None, release_page
     return True, "You have the latest version.", tag, None, release_page
 
 
@@ -141,6 +110,8 @@ def download_update(download_url: str) -> Tuple[bool, str]:
     Download the release asset to UPDATES_NEW_BINARY. Run in a background thread.
     Returns (success, message).
     """
+    if is_flatpak():
+        return False, "In-app download is only for the standalone binary."
     try:
         UPDATES_CACHE_DIR.mkdir(parents=True, exist_ok=True)
         req = urllib.request.Request(download_url, headers={"Accept": "application/octet-stream"})

@@ -9,11 +9,45 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 
+from steam_pipewire.utils.xdg_paths import app_config_dir, xdg_config_home, xdg_data_home
+
+
+def is_flatpak_runtime() -> bool:
+    """True inside a Flatpak sandbox (env and/or /.flatpak-info; some wrappers omit FLATPAK_ID)."""
+    if (os.environ.get("FLATPAK_ID") or "").strip():
+        return True
+    try:
+        return os.path.isfile("/.flatpak-info")
+    except OSError:
+        return False
+
+
+def flatpak_app_id() -> Optional[str]:
+    """Application ID for Icon= / docs; prefers FLATPAK_ID, else parses /.flatpak-info."""
+    v = (os.environ.get("FLATPAK_ID") or "").strip()
+    if v:
+        return v
+    try:
+        section = ""
+        with open("/.flatpak-info", "r", encoding="utf-8", errors="replace") as f:
+            for raw in f:
+                line = raw.strip()
+                if line.startswith("[") and line.endswith("]"):
+                    section = line[1:-1].strip()
+                    continue
+                if section == "Application" and "=" in line:
+                    key, _, val = line.partition("=")
+                    if key.strip() == "name":
+                        return val.strip()
+    except OSError:
+        pass
+    return None
+
 
 def _desktop_icon_line(icon_path: Optional[str]) -> str:
     if icon_path:
         return f"Icon={icon_path}\n"
-    fp = os.environ.get("FLATPAK_ID", "").strip()
+    fp = flatpak_app_id()
     if fp:
         return f"Icon={fp}\n"
     return "Icon=steam-audio-isolator\n"
@@ -51,17 +85,44 @@ class ConfigManager:
     """Manage application configuration and profiles"""
 
     def __init__(self):
-        self.config_dir = Path.home() / '.config' / 'steam-audio-isolator'
+        # Flatpak standard: use XDG paths (inside sandbox this becomes ~/.var/app/<app-id>/...)
+        self.config_dir = app_config_dir("steam-audio-isolator")
         self.profiles_dir = self.config_dir / 'profiles'
         self.settings_file = self.config_dir / 'settings.json'
-        self.autostart_dir = Path.home() / '.config' / 'autostart'
+        self.autostart_dir = xdg_config_home() / 'autostart'
         self.autostart_desktop_path = self.autostart_dir / 'steam-audio-isolator.desktop'
-        self.applications_dir = Path.home() / '.local' / 'share' / 'applications'
+        self.applications_dir = xdg_data_home() / 'applications'
         self.desktop_entry_path = self.applications_dir / 'steam-audio-isolator.desktop'
         self.install_bin_dir = Path.home() / '.local' / 'bin'
         self.install_bin_path = self.install_bin_dir / 'steam-audio-isolator'
+        self._maybe_migrate_legacy_paths()
         self._ensure_dirs()
         self._default_settings = AppSettings()
+
+    def _maybe_migrate_legacy_paths(self) -> None:
+        """
+        One-time migration from legacy hard-coded ~/.config/steam-audio-isolator.
+
+        When moving to XDG paths, Flatpak should store settings under ~/.var/app/<app-id>/config/...
+        We opportunistically migrate settings/profiles if legacy exists and new does not.
+        """
+        if not self.is_flatpak():
+            return
+        legacy = Path.home() / ".config" / "steam-audio-isolator"
+        if not legacy.exists():
+            return
+        try:
+            if not self.settings_file.exists():
+                legacy_settings = legacy / "settings.json"
+                if legacy_settings.exists():
+                    self.config_dir.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(legacy_settings, self.settings_file)
+            legacy_profiles = legacy / "profiles"
+            if legacy_profiles.exists() and not self.profiles_dir.exists():
+                shutil.copytree(legacy_profiles, self.profiles_dir)
+        except Exception:
+            # Non-fatal; user can copy manually if desired.
+            pass
 
     def _ensure_dirs(self):
         """Ensure configuration directories exist"""
@@ -197,7 +258,7 @@ class ConfigManager:
 
     def is_flatpak(self) -> bool:
         """True inside a Flatpak sandbox (in-app menu/autostart rules differ)."""
-        return bool(os.environ.get("FLATPAK_ID", "").strip())
+        return is_flatpak_runtime()
 
     def is_running_from_local_bin(self) -> bool:
         """Return True when the running binary is already in ~/.local/bin."""
@@ -212,6 +273,8 @@ class ConfigManager:
         """When running as frozen binary, copy self to ~/.local/bin and return that path.
         Desktop/autostart always use this path when frozen. When not frozen, return exec_path unchanged.
         """
+        if self.is_flatpak():
+            return exec_path
         if not exec_path or not self.is_frozen():
             return exec_path
         try:
@@ -227,11 +290,8 @@ class ConfigManager:
     def install_to_local_bin(self) -> tuple[bool, str]:
         """Copy the running binary to ~/.local/bin/steam-audio-isolator. Returns (success, message)."""
         if self.is_flatpak():
-            return (
-                False,
-                "Not used for Flatpak. Run: flatpak run "
-                f"{os.environ.get('FLATPAK_ID', 'io.github.crashman79.steam-audio-isolator')}",
-            )
+            aid = flatpak_app_id() or "io.github.crashman79.steam-audio-isolator"
+            return False, f"Not used for Flatpak. Run: flatpak run {aid}"
         if not self.is_frozen():
             return False, "Only available when running the standalone (one-file) binary."
         try:
@@ -265,6 +325,13 @@ class ConfigManager:
 
     def enable_autostart(self, exec_path: str, icon_path: Optional[str] = None) -> tuple[bool, str]:
         """Create autostart desktop file so app starts at login. Uses ~/.local/bin copy when frozen. Returns (success, message)."""
+        if self.is_flatpak():
+            aid = flatpak_app_id() or "io.github.crashman79.steam-audio-isolator"
+            return (
+                False,
+                "Login autostart cannot be enabled from inside this Flatpak. "
+                f"Use your desktop session’s startup settings and add this app, or: flatpak run {aid}",
+            )
         if not exec_path or not exec_path.strip():
             return False, "No executable path available (run from installed binary or use Copy to ~/.local/bin first)."
         try:
@@ -315,6 +382,8 @@ class ConfigManager:
 
     def enable_desktop_entry(self, exec_path: str, icon_path: Optional[str] = None) -> tuple[bool, str]:
         """Create desktop entry so app appears in application menu. Uses ~/.local/bin copy when frozen. Returns (success, message)."""
+        if self.is_flatpak():
+            return False, "The Flatpak ships its own application menu entry."
         if not exec_path or not exec_path.strip():
             return False, "No executable path available (run from installed binary or use Copy to ~/.local/bin first)."
         try:

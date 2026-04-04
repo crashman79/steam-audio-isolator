@@ -25,11 +25,12 @@ share/python-wheels/
 *.egg
 MANIFEST
 
-# PyInstaller
+# PyInstaller (legacy stray files)
 *.spec
 
 # Flatpak local build outputs
 *.flatpak
+build-dir/
 build-flatpak/
 repo/
 

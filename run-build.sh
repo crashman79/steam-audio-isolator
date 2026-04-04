@@ -1,7 +1,4 @@
-#!/bin/bash
-# Clean, rebuild onefile binary, then run it.
-set -e
+#!/bin/sh
+# Backwards-compatible alias: clean Flatpak build dirs, rebuild, run.
 cd "$(dirname "$0")"
-rm -rf build dist
-bash build.sh
-exec ./dist/steam-audio-isolator "$@"
+exec ./build-and-run.sh -c "$@"

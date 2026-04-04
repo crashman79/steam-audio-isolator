@@ -24,13 +24,15 @@ build-options:
   env:
     BASEAPP_REMOVE_WEBENGINE: '1'
 
-# dbus: Qt tray + desktop notifications (no network: updates via flatpak/software center).
+# dbus: Qt tray + notifications. Session bus: platform style / system palette (same idea as SinkSwitch).
 finish-args:
   - --share=ipc
+  - --socket=session-bus
   - --socket=fallback-x11
   - --socket=wayland
   - --device=dri
   - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.freedesktop.portal.Desktop
   - --talk-name=org.kde.StatusNotifierWatcher
   # Qt tray icons register as a StatusNotifierItem and need to own a unique bus name.
   - --own-name=org.kde.StatusNotifierItem.*

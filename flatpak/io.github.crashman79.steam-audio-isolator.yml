@@ -9,13 +9,16 @@ runtime-version: '24.08'
 sdk: org.freedesktop.Sdk
 command: steam-audio-isolator
 
-# dbus: Qt tray + notifications. No network (Flatpak updates via flatpak/software center).
+# dbus: Qt tray + notifications. Session bus: lets Qt use the platform style (KDE/GNOME palette) like SinkSwitch.
+# No network (Flatpak updates via flatpak/software center).
 finish-args:
   - --share=ipc
+  - --socket=session-bus
   - --socket=fallback-x11
   - --socket=wayland
   - --device=dri
   - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.freedesktop.portal.Desktop
   - --talk-name=org.kde.StatusNotifierWatcher
   # Qt tray icons register as a StatusNotifierItem and need to own a unique bus name.
   # Some desktops also use the freedesktop.org naming.
@@ -23,11 +26,7 @@ finish-args:
   - --talk-name=org.freedesktop.StatusNotifierWatcher
   - --own-name=org.freedesktop.StatusNotifierItem.*
   - --filesystem=xdg-run/pipewire-0
-  - --filesystem=xdg-config/steam-audio-isolator:create
-  - --filesystem=xdg-config/autostart:create
-  - --filesystem=xdg-cache/steam-audio-isolator:create
-  - --filesystem=xdg-data/applications:create
-  - --filesystem=xdg-data/icons:create
+  # Use Flatpak standard per-app storage under ~/.var/app/<app-id>/... (no host XDG mounts).
 
 modules:
   - name: pipewire
