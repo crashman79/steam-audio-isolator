@@ -3,8 +3,9 @@
 
 import sys
 from enum import Enum
+from typing import Optional
 from PyQt5.QtWidgets import QApplication
-from PyQt5.QtGui import QColor, QFont, QPalette
+from PyQt5.QtGui import QColor, QPalette
 
 
 class Theme(Enum):
@@ -12,6 +13,72 @@ class Theme(Enum):
     LIGHT = "light"
     DARK = "dark"
     SYSTEM = "system"
+
+
+def _is_linux() -> bool:
+    return sys.platform.startswith("linux")
+
+
+def _portal_color_scheme() -> Optional[int]:
+    """xdg-desktop-portal: org.freedesktop.appearance color-scheme (0 default, 1 prefer-dark, 2 prefer-light)."""
+    if not _is_linux():
+        return None
+    try:
+        from PyQt5.QtDBus import QDBusInterface, QDBusConnection, QDBusMessage
+
+        iface = QDBusInterface(
+            "org.freedesktop.portal.Desktop",
+            "/org/freedesktop/portal/desktop",
+            "org.freedesktop.portal.Settings",
+            QDBusConnection.sessionBus(),
+        )
+        if not iface.isValid():
+            return None
+        reply = iface.call("Read", "org.freedesktop.appearance", "color-scheme")
+        if reply.type() != QDBusMessage.ReplyMessage or not reply.arguments():
+            return None
+        arg0 = reply.arguments()[0]
+        if hasattr(arg0, "toUInt"):
+            ok, n = arg0.toUInt()
+            return int(n) if ok else None
+        return int(arg0)
+    except Exception:
+        return None
+
+
+def _portal_linux_explicit_theme() -> Optional[Theme]:
+    """When the user sets light/dark in system settings, portal reports it (works across KDE, GNOME, etc.)."""
+    s = _portal_color_scheme()
+    if s == 1:
+        return Theme.DARK
+    if s == 2:
+        return Theme.LIGHT
+    return None
+
+
+def _theme_from_qt_window_palette(app: QApplication) -> Optional[Theme]:
+    try:
+        p = app.palette()
+        if p.color(QPalette.Window).lightness() < 128:
+            return Theme.DARK
+    except Exception:
+        pass
+    return None
+
+
+def _fallback_theme_after_portal(app: Optional[QApplication]) -> Theme:
+    """When portal has no explicit preference (0 / unavailable): trust Qt palette, then darkdetect."""
+    if app is not None:
+        t = _theme_from_qt_window_palette(app)
+        if t is not None:
+            return Theme.DARK
+    try:
+        import darkdetect
+        if darkdetect.isDark():
+            return Theme.DARK
+    except Exception:
+        pass
+    return Theme.LIGHT
 
 
 class ThemeManager:
@@ -39,24 +106,20 @@ class ThemeManager:
     
     @staticmethod
     def get_system_theme() -> Theme:
-        """Detect system theme preference. Uses darkdetect (GNOME/gsettings) then Qt palette as fallback on Linux."""
+        """Resolve 'System' for colors and charts: portal (Linux), then DE-specific fallbacks."""
+        if _is_linux():
+            explicit = _portal_linux_explicit_theme()
+            if explicit is not None:
+                return explicit
+            app = QApplication.instance()
+            return _fallback_theme_after_portal(app)
+
         try:
             import darkdetect
             if darkdetect.isDark():
                 return Theme.DARK
         except Exception:
             pass
-        # Fallback on Linux: Qt may have the real system palette before we override it (e.g. KDE, XFCE).
-        if sys.platform.startswith("linux"):
-            try:
-                app = QApplication.instance()
-                if app is not None:
-                    p = app.palette()
-                    window_lightness = p.color(QPalette.Window).lightness()
-                    if window_lightness < 128:
-                        return Theme.DARK
-            except Exception:
-                pass
         return Theme.LIGHT
     
     @staticmethod
@@ -74,10 +137,11 @@ class ThemeManager:
         # "System" should actually follow the desktop theme. Do not force Fusion or a global stylesheet,
         # otherwise we override the platform theme and end up stuck in light mode on some setups.
         if theme == Theme.SYSTEM:
+            # Same idea as SinkSwitch: platform QStyle + standardPalette (no Fusion, no global stylesheet).
+            # Flatpak needs --socket=session-bus so Qt can talk to the host style/palette.
             try:
                 app.setStyleSheet("")
                 app.setPalette(app.style().standardPalette())
-                # Leave the style unchanged so the platform theme can apply (GNOME/KDE/Adwaita/etc).
             except Exception:
                 pass
             return

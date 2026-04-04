@@ -115,52 +115,32 @@ This results in cluttered recordings with unwanted sounds mixing into your gamep
 
 ### Flatpak (recommended)
 
-Stable Qt/runtime on top of [Flathub](https://flathub.org)-style installs; `pw-cli` / `pw-dump` are bundled; updates with `flatpak update`.
+Stable Freedesktop **24.08** runtime; `pw-cli` / `pw-dump` are bundled in the app. **Install from [GitHub Releases](https://github.com/crashman79/steam-audio-isolator/releases):** download **`steam-audio-isolator-x86_64.flatpak`**, then:
 
 ```bash
-flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-# After the app is published on Flathub:
-flatpak install flathub io.github.crashman79.steam-audio-isolator
+flatpak install --user ./steam-audio-isolator-x86_64.flatpak
 flatpak run io.github.crashman79.steam-audio-isolator
 ```
 
-**Build and install locally from this repo:**
+For a newer version, install the new `.flatpak` from the latest release (or uninstall the old ref first if the installer prompts).
+
+**Build and install locally from this repo** (installs Freedesktop 24.08 runtime/SDK from Flathub if needed):
 
 ```bash
-flatpak install -y flathub org.freedesktop.Platform//24.08 org.freedesktop.Sdk//24.08
-flatpak-builder --user --install --default-branch=stable --force-clean build-dir flatpak/io.github.crashman79.steam-audio-isolator.yml
+chmod +x build.sh build-and-run.sh
+./build.sh
+flatpak run io.github.crashman79.steam-audio-isolator
+# or one step: ./build-and-run.sh
 ```
 
-See `flatpak/README.md` for details, permissions, and submitting to Flathub (generated pip sources).
+See [`flatpak/README.md`](flatpak/README.md) for CI, permissions, and `./build.sh --bundle`.
 
-On first run the app uses your normal XDG config/cache/data dirs. **About → Updates** compares your build to **GitHub Releases** (needs network). After you publish on **Flathub**, installs update with `flatpak update`—there is no Flathub HTTP API for in-app version checks. Release tags attach **`steam-audio-isolator-x86_64.flatpak`**. Publishing: `flatpak/README.md`, [Flathub submission](https://docs.flathub.org/docs/for-app-authors/submission), [Flatpak publishing](https://docs.flatpak.org/en/latest/publishing.html).
-
-### Single-file binary (legacy)
-
-Smallest download from [Releases](https://github.com/crashman79/steam-audio-isolator); can be fragile with bundled Qt on some setups. In-app updater downloads this artifact.
-
-```bash
-tar -xzf steam-audio-isolator-linux-x86_64.tar.gz
-chmod +x steam-audio-isolator
-./steam-audio-isolator
-```
-
-### Portable bundle (venv, no PyInstaller)
-
-If the single-file build is fragile on your system (crashes, wrong Qt stack), use the **portable** tarball from [Releases](https://github.com/crashman79/steam-audio-isolator/releases): `steam-audio-isolator-linux-x86_64-portable.tar.gz`.
-
-```bash
-tar -xzf steam-audio-isolator-linux-x86_64-portable.tar.gz
-cd steam-audio-isolator-portable
-./steam-audio-isolator
-```
-
-This is a directory with a local venv and normal PyQt5 wheels—no PyInstaller. After a distro upgrade or on a new machine, refresh: `./.venv/bin/pip install --no-cache-dir -r requirements.txt`. See `README.txt` inside the bundle for an optional `--system-site-packages` workflow with distro `python-pyqt5`.
+On first run the app uses XDG config/cache/data (under `~/.var/app/...` when installed as Flatpak). **GitHub Releases** ship **`steam-audio-isolator-x86_64.flatpak`** only ([`.github/workflows/build-release.yml`](.github/workflows/build-release.yml)).
 
 ### Building releases (developers)
 
-- **Flatpak:** `flatpak-builder` as above; manifest in `flatpak/`.
-- **One-file + portable tarballs:** `pip install -r requirements.txt pyinstaller && ./build.sh`
+- **Flatpak:** `./build.sh` (user install) or `./build.sh --bundle` (`.flatpak` file). Manifest: `flatpak/io.github.crashman79.steam-audio-isolator.yml`.
+- **Quick dev without rebuilding Flatpak:** `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt && .venv/bin/python -m steam_pipewire.main`
 
 ### Requirements
 
@@ -179,7 +159,7 @@ which pw-dump pw-cli
 ## Quick Start
 
 ### Step 1: Start the Application
-- Run the binary (e.g. `./steam-audio-isolator` from the extracted folder, or from the application menu if you enabled **Add to application menu** in Settings)
+- Run the Flatpak (`flatpak run io.github.crashman79.steam-audio-isolator`) or open **Steam Audio Isolator** from your application menu after installing the `.flatpak` or building locally with `./build.sh`
 - App auto-detects all PipeWire audio sources
 
 ### Step 2: Select Audio Sources
@@ -229,16 +209,15 @@ which pw-dump pw-cli
 - **Automatically apply routing when new games are detected**: Optional auto-apply
 - **Minimize to tray**: Close button hides to tray instead of quitting
 - **Start minimized to tray**: App starts with only the tray icon visible
-- **Start when I log in**: App writes `~/.config/autostart/` desktop entry (uses binary in `~/.local/bin` when possible)
-- **Add to application menu**: App writes `~/.local/share/applications/` desktop entry (copies binary to `~/.local/bin` when enabling)
-- **Copy to ~/.local/bin**: One-click install of the binary to a PATH-friendly location (standalone binary only). On first run from elsewhere, the app can prompt to do this once.
+- **Flatpak:** login autostart, “add to menu”, and “copy to ~/.local/bin” are not offered; use your desktop’s startup/app list and `flatpak update` for updates.
+- **Non-Flatpak dev / legacy one-file runs:** “Start when I log in” writes `~/.config/autostart/` (may use `~/.local/bin` when running a frozen binary), “Add to application menu” writes `~/.local/share/applications/`, “Copy to ~/.local/bin” installs the one-file binary to `PATH`.
 - **Theme**: Light, dark, or system
 
 ### Profiles Tab
 - **Save Profile**: Create a named profile with your current routing selection
 - **Load Profile**: Quickly restore a saved configuration
 - **Delete Profile**: Remove a profile you no longer need
-- **Storage**: Profiles stored in `~/.config/steam-audio-isolator/profiles/`
+- **Storage**: Profiles under the app config dir (Flatpak: `~/.var/app/io.github.crashman79.steam-audio-isolator/config/steam-audio-isolator/profiles/`)
 
 ### About Tab
 - **Version Info**: Current application version
@@ -424,7 +403,7 @@ Contributions welcome! This project benefits from:
 
 ### Development
 
-Clone the repo, build the binary with `./build_release.sh` (see [Building the binary](#building-the-binary-developers)), then run `./dist/steam-audio-isolator`. The app is a single standalone binary; config, menu, and autostart are managed inside the app via Settings.
+Clone the repo, run `./build-and-run.sh` (Flatpak user install + launch) or `./build.sh` then `flatpak run io.github.crashman79.steam-audio-isolator`. For a fast Python loop without Flatpak, use a venv and `python -m steam_pipewire.main` (see [Building releases](#building-releases-developers) above).
 
 ---
 

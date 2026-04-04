@@ -8,32 +8,22 @@ on:
 
 jobs:
   flatpak:
-    # 22.04 ships flatpak-builder <1.4, which calls appstream-compose inside the SDK; 24.08 SDK no longer provides it.
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install flatpak
+      - name: Install Flatpak build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y flatpak flatpak-builder appstream
-          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-          flatpak install -y --noninteractive flathub org.freedesktop.Platform//24.08 org.freedesktop.Sdk//24.08
+          sudo apt-get install -y flatpak flatpak-builder appstream python3-pil
 
-      - name: Icons (all hicolor sizes)
+      - name: Build bundle
+        env:
+          GITHUB_ACTIONS: true
         run: |
-          sudo apt-get install -y python3-pil
+          chmod +x build.sh
           python3 generate_icon.py
-
-      - name: Build Flatpak
-        run: |
-          flatpak-builder --user --repo=repo --default-branch=stable --force-clean build-dir \
-            flatpak/io.github.crashman79.steam-audio-isolator.yml
-
-      - name: Create bundle
-        run: |
-          flatpak build-bundle repo steam-audio-isolator-x86_64.flatpak \
-            io.github.crashman79.steam-audio-isolator stable
+          ./build.sh --bundle
 
       - name: Upload bundle
         uses: actions/upload-artifact@v4

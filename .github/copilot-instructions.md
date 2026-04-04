@@ -5,10 +5,10 @@ This is a PyQt5-based GUI application that isolates game audio for clean Steam g
 
 **Current Version:** v0.2.0  
 **Repository:** https://github.com/crashman79/steam-audio-isolator  
-**Status:** Active development, standalone binary releases
+**Status:** Active development; Flatpak-only releases (`./build.sh`, `.github/workflows/build-release.yml`)
 
 ## Current Implementation Status
-- Standalone single-binary distribution (no install script; app manages config, menu, autostart)
+- **Distribution:** Flatpak (manifest `flatpak/io.github.crashman79.steam-audio-isolator.yml`); local `./build.sh` / `./build-and-run.sh`
 - PyQt5 GUI with 6 tabs (Audio Routing, Current Routes, System Info, Settings, Profiles, About)
 - System tray with Show, Settings, Apply/Clear routing, Refresh, Quit
 - Settings: Copy to ~/.local/bin, Add to application menu, Start when I log in, start minimized, theme, etc.
@@ -17,8 +17,8 @@ This is a PyQt5-based GUI application that isolates game audio for clean Steam g
 - Profile save/load; icon cache; GitHub Actions build and release on tag push
 
 ## How to Run
-1. **Standalone binary (recommended):** Build with `./build_release.sh`, then run `./dist/steam-audio-isolator`.
-2. **From source:** `python -m steam_pipewire.main` (requires venv and `pip install -r requirements.txt`).
+1. **Flatpak (recommended):** `./build-and-run.sh` or `./build.sh` then `flatpak run io.github.crashman79.steam-audio-isolator`.
+2. **From source:** `python -m steam_pipewire.main` (venv + `pip install -r requirements.txt`).
 
 ## PipeWire Configuration Analysis (Duckov Example)
 
@@ -75,7 +75,8 @@ Root files:
 ├── CHANGELOG.md                      # Version history (Keep a Changelog format)
 ├── README.md                         # User documentation
 ├── TECHNICAL_DETAILS.md              # PipeWire routing details
-├── build_release.sh                  # PyInstaller build script
+├── build.sh                          # Flatpak build (install or --bundle)
+├── build-and-run.sh                  # Flatpak user install + run
 ├── requirements.txt                  # Python dependencies
 ├── setup.py                          # Package configuration
 ├── .github/
