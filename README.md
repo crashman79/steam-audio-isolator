@@ -127,10 +127,9 @@ For a newer version, install the new `.flatpak` from the latest release (or unin
 **Build and install locally from this repo** (installs Freedesktop 24.08 runtime/SDK from Flathub if needed):
 
 ```bash
-chmod +x build.sh build-and-run.sh
+chmod +x build.sh
 ./build.sh
 flatpak run io.github.crashman79.steam-audio-isolator
-# or one step: ./build-and-run.sh
 ```
 
 See [`flatpak/README.md`](flatpak/README.md) for CI, permissions, and `./build.sh --bundle`.
@@ -140,7 +139,6 @@ On first run the app uses XDG config/cache/data (under `~/.var/app/...` when ins
 ### Building releases (developers)
 
 - **Flatpak:** `./build.sh` (user install) or `./build.sh --bundle` (`.flatpak` file). Manifest: `flatpak/io.github.crashman79.steam-audio-isolator.yml`.
-- **Quick dev without rebuilding Flatpak:** `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt && .venv/bin/python -m steam_pipewire.main`
 
 ### Requirements
 
@@ -209,8 +207,7 @@ which pw-dump pw-cli
 - **Automatically apply routing when new games are detected**: Optional auto-apply
 - **Minimize to tray**: Close button hides to tray instead of quitting
 - **Start minimized to tray**: App starts with only the tray icon visible
-- **Flatpak:** login autostart, “add to menu”, and “copy to ~/.local/bin” are not offered; use your desktop’s startup/app list and `flatpak update` for updates.
-- **Non-Flatpak dev / legacy one-file runs:** “Start when I log in” writes `~/.config/autostart/` (may use `~/.local/bin` when running a frozen binary), “Add to application menu” writes `~/.local/share/applications/`, “Copy to ~/.local/bin” installs the one-file binary to `PATH`.
+- **Flatpak:** “Start when I log in” uses **xdg-desktop-portal** (`RequestBackground`) so KDE, GNOME, and other portal-enabled desktops show a **system permission dialog** instead of a sandbox-only autostart file. “Add to menu” / “copy to ~/.local/bin” are not offered; use `flatpak update` for updates.
 - **Theme**: Light, dark, or system
 
 ### Profiles Tab
@@ -285,22 +282,13 @@ pw-cli list-objects Link             # View active connections
 
 ### Configuration Storage
 ```
-~/.config/steam-audio-isolator/
+~/.var/app/io.github.crashman79.steam-audio-isolator/config/steam-audio-isolator/
 ├── settings.json                    # Application settings (theme, tray, autostart, etc.)
 └── profiles/
     ├── game-only.pwp               # Saved routing profiles
     └── ...
 
-~/.config/autostart/
-└── steam-audio-isolator.desktop    # Present if "Start when I log in" is enabled
-
-~/.local/share/applications/
-└── steam-audio-isolator.desktop    # Present if "Add to application menu" is enabled
-
-~/.local/bin/
-└── steam-audio-isolator            # Optional: copy created when enabling menu/autostart or via Settings
-
-~/.cache/steam-audio-isolator/
+~/.var/app/io.github.crashman79.steam-audio-isolator/cache/
 └── steam-audio-isolator.log
 ```
 
@@ -403,7 +391,7 @@ Contributions welcome! This project benefits from:
 
 ### Development
 
-Clone the repo, run `./build-and-run.sh` (Flatpak user install + launch) or `./build.sh` then `flatpak run io.github.crashman79.steam-audio-isolator`. For a fast Python loop without Flatpak, use a venv and `python -m steam_pipewire.main` (see [Building releases](#building-releases-developers) above).
+Clone the repo, run `./build.sh` then `flatpak run io.github.crashman79.steam-audio-isolator`.
 
 ---
 

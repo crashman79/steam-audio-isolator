@@ -11,7 +11,7 @@ Primary manifest: [`io.github.crashman79.steam-audio-isolator.yml`](io.github.cr
 | Workflow | When | Output |
 |----------|------|--------|
 | [`.github/workflows/flatpak.yml`](../.github/workflows/flatpak.yml) | `push` / `pull_request` to `main`, or manual | Workflow artifact **`flatpak-bundle`** (`steam-audio-isolator-x86_64.flatpak`) |
-| [`.github/workflows/build-release.yml`](../.github/workflows/build-release.yml) | Version tags `v*` or manual | Same `.flatpak` attached to the **GitHub Release** with the tarballs and binary |
+| [`.github/workflows/build-release.yml`](../.github/workflows/build-release.yml) | Version tags `v*` or manual | Same `.flatpak` attached to the **GitHub Release** |
 
 Runners use **Ubuntu 24.04**, **flatpak-builder** ≥ 1.4, and the **appstream** package so AppStream compose matches Freedesktop SDK **24.08**.
 
@@ -77,10 +77,9 @@ After install, the launcher should appear as **Steam Audio Isolator** with **`Ex
 From the repository root:
 
 ```bash
-chmod +x build.sh build-and-run.sh
+chmod +x build.sh
 ./build.sh                    # user install (needs Pillow or python3-pil for icons once)
 flatpak run io.github.crashman79.steam-audio-isolator
-# or: ./build-and-run.sh
 ```
 
 Single-file bundle (no install into your user Flatpak): `./build.sh --bundle` → `steam-audio-isolator-x86_64.flatpak`
@@ -91,10 +90,13 @@ Manual equivalent: install Freedesktop 24.08 Platform+Sdk from Flathub, then `fl
 
 | Permission | Why |
 |------------|-----|
+| `session-bus` | Qt platform style / system palette |
 | `wayland` / `fallback-x11` | Qt GUI (session picks backend; not X11-only) |
-| `talk-name` (Notifications, StatusNotifierWatcher) | Tray icon + desktop notifications |
+| `talk-name=org.freedesktop.portal.Desktop` | Portal **Settings** (appearance) and **Background** (`RequestBackground`) for login autostart on KDE/GNOME/etc. |
+| `talk-name` (Notifications, StatusNotifierWatcher) + StatusNotifierItem own names | Tray icon + desktop notifications |
 | `xdg-run/pipewire-0` | Host PipeWire socket |
-| `xdg-config/…`, `xdg-cache/…`, `xdg-data/…` (scoped `create`) | App config, autostart, cache log/lock, optional menu entry + user icons |
+
+App data lives under the default Flatpak per-app XDG dirs (`~/.var/app/<app-id>/…`) with no extra host config mounts.
 
 ## Optional: other layouts
 

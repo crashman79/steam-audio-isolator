@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.15] - 2026-04-10
+
+### Changed
+- Game source labels are now more robust under Steam + Proton/Wine: generic stream names (for example, "Audio Stream #1") are replaced with best-effort game titles using Steam AppID/appmanifest lookup, process command-line hints, and safer fallbacks.
+- Project policy is now explicitly Flatpak-first: CI Flatpak builds run on every push and pull request, issue reporting defaults to Flatpak installs, and standalone binary build guidance has been removed from user/developer docs.
+- `build.sh` now mirrors the SinkSwitch-style Flatpak workflow: default build+install, `--clean`/`-c`, optional `STEAM_AUDIO_ISOLATOR_FLATPAK_BUILDER_OPTS`, and optional `--bundle-install` for one-command bundle build+reinstall.
+- Removed `build-and-run.sh`; use `./build.sh` followed by `flatpak run io.github.crashman79.steam-audio-isolator` (or `run-build.sh` alias).
+- About tab now shows a build timestamp in addition to version; `build.sh` stamps the timestamp for each build.
+
 ## [0.3.11] - 2026-03-30
 
 ### Added

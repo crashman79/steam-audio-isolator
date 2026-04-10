@@ -111,6 +111,11 @@ def acquire_lock():
 def main():
     """Launch the application"""
     try:
+        # Flatpak portal autostart may pass this (see portal_background.RequestBackground).
+        minimized_from_cli = "--minimized" in sys.argv
+        if minimized_from_cli:
+            sys.argv = [a for a in sys.argv if a != "--minimized"]
+
         # SinkSwitch: prefer native Wayland when available (Flatpak included); avoids XWayland quirks.
         if sys.platform.startswith("linux") and os.environ.get("WAYLAND_DISPLAY"):
             os.environ.setdefault("QT_QPA_PLATFORM", "wayland;xcb")
@@ -148,7 +153,7 @@ def main():
         ThemeManager.apply_theme(app, theme)
         exec_path = get_autostart_exec_path()
         window = MainWindow(exec_path=exec_path)
-        start_minimized = settings.get("start_minimized_to_tray")
+        start_minimized = minimized_from_cli or settings.get("start_minimized_to_tray")
         if start_minimized and window.tray_icon is not None and window.tray_icon.isVisible():
             # Keep window hidden; only tray icon visible — show popup so user notices
             QTimer.singleShot(800, window.show_tray_launch_notification)

@@ -8,7 +8,7 @@ This is a PyQt5-based GUI application that isolates game audio for clean Steam g
 **Status:** Active development; Flatpak-only releases (`./build.sh`, `.github/workflows/build-release.yml`)
 
 ## Current Implementation Status
-- **Distribution:** Flatpak (manifest `flatpak/io.github.crashman79.steam-audio-isolator.yml`); local `./build.sh` / `./build-and-run.sh`
+- **Distribution:** Flatpak (manifest `flatpak/io.github.crashman79.steam-audio-isolator.yml`); local `./build.sh`
 - PyQt5 GUI with 6 tabs (Audio Routing, Current Routes, System Info, Settings, Profiles, About)
 - System tray with Show, Settings, Apply/Clear routing, Refresh, Quit
 - Settings: Copy to ~/.local/bin, Add to application menu, Start when I log in, start minimized, theme, etc.
@@ -17,7 +17,7 @@ This is a PyQt5-based GUI application that isolates game audio for clean Steam g
 - Profile save/load; icon cache; GitHub Actions build and release on tag push
 
 ## How to Run
-1. **Flatpak (recommended):** `./build-and-run.sh` or `./build.sh` then `flatpak run io.github.crashman79.steam-audio-isolator`.
+1. **Flatpak (recommended):** `./build.sh` then `flatpak run io.github.crashman79.steam-audio-isolator`.
 2. **From source:** `python -m steam_pipewire.main` (venv + `pip install -r requirements.txt`).
 
 ## PipeWire Configuration Analysis (Duckov Example)
@@ -76,7 +76,6 @@ Root files:
 ├── README.md                         # User documentation
 ├── TECHNICAL_DETAILS.md              # PipeWire routing details
 ├── build.sh                          # Flatpak build (install or --bundle)
-├── build-and-run.sh                  # Flatpak user install + run
 ├── requirements.txt                  # Python dependencies
 ├── setup.py                          # Package configuration
 ├── .github/

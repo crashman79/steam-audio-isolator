@@ -7,12 +7,18 @@ import re
 import logging
 from pathlib import Path
 from typing import List, Dict, Optional
+import time
 
 logger = logging.getLogger(__name__)
 
 
 class SourceDetector:
     """Detect audio sources available in PipeWire"""
+
+    _steam_appname_cache: Dict[str, str] = {}
+    _steam_library_cache: List[Path] = []
+    _steam_cache_time: float = 0.0
+    _steam_cache_ttl: float = 300.0
 
     def __init__(self):
         self.sources = []
@@ -155,6 +161,204 @@ class SourceDetector:
                 return stem
         return node_description or app_name or node_name
 
+    @staticmethod
+    def _sanitize_game_candidate(value: str) -> str:
+        """Return a cleaned game title candidate, or empty if it is generic/middleware noise."""
+        candidate = (value or '').strip().strip('"').strip("'")
+        if not candidate:
+            return ''
+
+        lower = candidate.lower()
+        generic_exact = {
+            'audio stream',
+            'stream output audio',
+            'stream input audio',
+            'wine',
+            'wine64',
+            'wine-preloader',
+            'wine64-preloader',
+            'proton',
+            'steam',
+            'steam client',
+            'pipewire',
+            'wireplumber',
+            'fmod ex app',
+            'wwise',
+            'webrtc voiceengine',
+        }
+        if lower in generic_exact:
+            return ''
+        if re.fullmatch(r'audio\s+stream\s*#\d+', lower):
+            return ''
+        if re.fullmatch(r'stream\s*#\d+', lower):
+            return ''
+
+        return candidate
+
+    @staticmethod
+    def _extract_steam_appid(text: str) -> Optional[str]:
+        """Extract Steam AppID from an arbitrary string."""
+        if not text:
+            return None
+        m = re.search(r'(?:SteamAppId|AppId|appid|steam_appid)\s*[=:]\s*(\d{3,8})', text, re.IGNORECASE)
+        if m:
+            return m.group(1)
+        m = re.search(r'/compatdata/(\d{3,8})/', text)
+        if m:
+            return m.group(1)
+        return None
+
+    def _read_proc_text(self, pid: Optional[int], filename: str) -> str:
+        """Read procfs text blobs safely (cmdline/environ)."""
+        if not pid or pid <= 0:
+            return ''
+        try:
+            raw = Path(f'/proc/{pid}/{filename}').read_bytes()
+            # proc cmdline/environ are NUL-separated
+            return raw.replace(b'\x00', b' ').decode('utf-8', errors='replace')
+        except Exception:
+            return ''
+
+    @classmethod
+    def _steam_libraries(cls) -> List[Path]:
+        """Resolve known Steam library roots and cache them for a short window."""
+        now = time.time()
+        if cls._steam_library_cache and (now - cls._steam_cache_time) < cls._steam_cache_ttl:
+            return cls._steam_library_cache
+
+        home = Path.home()
+        roots = [
+            home / '.local/share/Steam',
+            home / '.steam/steam',
+            home / '.var/app/com.valvesoftware.Steam/.local/share/Steam',
+        ]
+
+        libraries = []
+        seen = set()
+
+        def _add_library(root_path: Path):
+            rp = root_path.expanduser()
+            if not rp.exists():
+                return
+            key = str(rp.resolve())
+            if key in seen:
+                return
+            seen.add(key)
+            libraries.append(rp)
+
+        for root in roots:
+            _add_library(root)
+            vdf = root / 'steamapps/libraryfolders.vdf'
+            if not vdf.exists():
+                continue
+            try:
+                text = vdf.read_text(encoding='utf-8', errors='replace')
+            except Exception:
+                continue
+            for m in re.finditer(r'"path"\s*"([^"]+)"', text):
+                path_text = m.group(1).replace('\\\\', '/')
+                lib_root = Path(path_text)
+                # libraryfolders.vdf path points to the library root that contains steamapps
+                if (lib_root / 'steamapps').exists():
+                    _add_library(lib_root)
+
+        cls._steam_library_cache = libraries
+        cls._steam_cache_time = now
+        return libraries
+
+    @classmethod
+    def _steam_name_for_appid(cls, appid: str) -> Optional[str]:
+        """Resolve Steam game name for an AppID from appmanifest files."""
+        if not appid:
+            return None
+        if appid in cls._steam_appname_cache:
+            return cls._steam_appname_cache[appid]
+
+        for library_root in cls._steam_libraries():
+            manifest = library_root / 'steamapps' / f'appmanifest_{appid}.acf'
+            if not manifest.exists():
+                continue
+            try:
+                text = manifest.read_text(encoding='utf-8', errors='replace')
+            except Exception:
+                continue
+            m = re.search(r'"name"\s*"([^"]+)"', text)
+            if m:
+                name = m.group(1).strip()
+                if name:
+                    cls._steam_appname_cache[appid] = name
+                    return name
+        return None
+
+    def _game_name_from_process(self, props: Dict) -> str:
+        """Best-effort game title extraction for Steam/Proton/Wine streams."""
+        app_binary = (props.get('application.process.binary') or '').strip()
+        app_name = (props.get('application.name') or '').strip()
+        node_desc = (props.get('node.description') or '').strip()
+
+        # Prefer already-useful labels before expensive procfs/manifest checks.
+        for candidate in (app_name, node_desc):
+            cleaned = self._sanitize_game_candidate(candidate)
+            if cleaned:
+                return cleaned
+
+        pid_raw = props.get('application.process.id')
+        try:
+            pid = int(pid_raw)
+        except Exception:
+            pid = None
+
+        cmdline_text = self._read_proc_text(pid, 'cmdline')
+        environ_text = self._read_proc_text(pid, 'environ')
+
+        # Resolve Steam AppID first where possible; this is the most stable name source.
+        for text in (app_binary, cmdline_text, environ_text):
+            appid = self._extract_steam_appid(text)
+            if not appid:
+                continue
+            steam_name = self._steam_name_for_appid(appid)
+            if steam_name:
+                return steam_name
+
+        # Next best: pull executable/path hints from process command line.
+        args = [a for a in cmdline_text.split(' ') if a]
+        for arg in reversed(args):
+            low = arg.lower()
+            if '/steamapps/common/' in low:
+                m = re.search(r'/steamapps/common/([^/]+)', arg, re.IGNORECASE)
+                if m:
+                    cleaned = self._sanitize_game_candidate(m.group(1).replace('_', ' '))
+                    if cleaned:
+                        return cleaned
+            if low.endswith('.exe'):
+                stem = Path(arg).name
+                stem = stem[:-4] if stem.lower().endswith('.exe') else stem
+                cleaned = self._sanitize_game_candidate(stem.replace('_', ' '))
+                if cleaned:
+                    return cleaned
+            if low.endswith(('.x86_64', '.x86', '.bin')):
+                stem = Path(arg).name
+                for suf in ('.x86_64', '.x86', '.bin'):
+                    if stem.endswith(suf):
+                        stem = stem[:-len(suf)]
+                        break
+                cleaned = self._sanitize_game_candidate(stem.replace('_', ' '))
+                if cleaned:
+                    return cleaned
+
+        # Last fallback: process binary label, then old behavior.
+        binary_guess = self._game_label_from_process_binary(
+            props,
+            app_name,
+            node_desc,
+            (props.get('node.name') or '').strip(),
+        )
+        cleaned = self._sanitize_game_candidate(binary_guess)
+        if cleaned:
+            return cleaned
+
+        return node_desc or app_name or (props.get('node.name') or '')
+
     def _parse_nodes(self, data: List[Dict]) -> List[Dict]:
         """Parse PipeWire nodes to extract audio sources"""
         sources = []
@@ -210,13 +414,9 @@ class SourceDetector:
 
                 source_type = self._determine_source_type(props)
                 
-                # Build a clear description
-                # Priority: 
-                #   1. System sources (speakers, etc.): use node.description (descriptive hardware name)
-                #   2. Wine/Proton games: use application.name (has actual game name)
-                #   3. Communication apps: use binary name for clarity ("Discord" not "WEBRTC VoiceEngine")
-                #   4. Other apps: use node.description or application.name (preserve original behavior)
-                #   5. Fallback: node.name
+                # Build a clear description.
+                # For games we use Steam/Proton-aware name resolution to avoid generic labels like
+                # "Audio Stream #1" when compatibility layers hide the title.
                 app_binary = props.get('application.process.binary', '')
                 app_name = props.get('application.name', '')
                 media_name = props.get('media.name', '')
@@ -225,17 +425,8 @@ class SourceDetector:
                 # System sources (audio devices) should always use descriptive name
                 if source_type == 'System':
                     description = props.get('node.description') or app_name or node_name
-                # For Wine/Proton games, binary is "wine64-preloader" so use app_name instead
-                elif source_type == 'Game' and any(x in app_binary.lower() for x in ['wine', 'proton', '.exe']):
-                    # Wine/Proton game - use application.name which has the real game name
-                    description = app_name or props.get('node.description') or node_name
-                elif source_type == 'Game' and (
-                    'fmod' in (app_name + (props.get('node.description') or '') + media_name).lower()
-                    or 'wwise' in (app_name + (props.get('node.description') or '') + media_name).lower()
-                ):
-                    description = self._game_label_from_process_binary(
-                        props, app_name, props.get('node.description') or '', node_name
-                    )
+                elif source_type == 'Game':
+                    description = self._game_name_from_process(props)
                 # For Communication apps, use binary name for clarity (Discord not WEBRTC VoiceEngine)
                 elif source_type == 'Communication' and app_binary and app_binary not in ['', 'pipewire', 'wireplumber']:
                     # Use binary name and capitalize it nicely
