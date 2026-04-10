@@ -104,10 +104,14 @@ class SettingsDialog(QWidget):
         # Sync menu/autostart from actual files so UI reflects reality
         if config.is_flatpak():
             self.settings['add_to_app_menu'] = False
-            self.settings['start_at_login'] = False
+            # start_at_login: user preference + portal (not host autostart file)
         else:
             self.settings['add_to_app_menu'] = config.is_desktop_entry_enabled()
             self.settings['start_at_login'] = config.is_autostart_enabled()
+        self._portal_login_snapshot = (
+            self.settings.get("start_at_login", False),
+            self.settings.get("start_minimized_to_tray", False),
+        )
         self.init_ui()
     
     def init_ui(self):
@@ -210,18 +214,21 @@ class SettingsDialog(QWidget):
         self.start_minimized_checkbox.stateChanged.connect(self._on_settings_changed)
         tray_layout.addWidget(self.start_minimized_checkbox)
         tray_layout.addWidget(QLabel("When enabled, the app will start with only the tray icon visible."))
+        self.start_at_login_checkbox = QCheckBox(
+            "Start when I log in (desktop portal)"
+            if self.config.is_flatpak()
+            else "Start Steam Audio Isolator when I log in"
+        )
+        self.start_at_login_checkbox.setChecked(self.settings.get("start_at_login", False))
+        self.start_at_login_checkbox.stateChanged.connect(self._on_settings_changed)
+        tray_layout.addWidget(self.start_at_login_checkbox)
         if self.config.is_flatpak():
-            self.start_at_login_checkbox = None
             tray_layout.addWidget(QLabel(
-                "Startup at login: add this Flatpak in your desktop session startup or autostart "
-                "applications (the entry from your software center). In-app autostart files are not "
-                "used for the Flatpak build."
+                "Flatpak: Save opens your desktop’s standard permission dialog (xdg-desktop-portal "
+                "Background). Use this on KDE, GNOME, and other portal-enabled setups instead of a file "
+                "inside the sandbox."
             ))
         else:
-            self.start_at_login_checkbox = QCheckBox("Start Steam Audio Isolator when I log in")
-            self.start_at_login_checkbox.setChecked(self.settings.get('start_at_login', False))
-            self.start_at_login_checkbox.stateChanged.connect(self._on_settings_changed)
-            tray_layout.addWidget(self.start_at_login_checkbox)
             tray_layout.addWidget(QLabel(
                 "When enabled, creates ~/.config/autostart/steam-audio-isolator.desktop. Click Save to apply."
             ))
@@ -273,11 +280,10 @@ class SettingsDialog(QWidget):
         self.settings['auto_apply_games'] = self.auto_apply_checkbox.isChecked()
         self.settings['minimize_to_tray'] = self.tray_checkbox.isChecked()
         self.settings['start_minimized_to_tray'] = self.start_minimized_checkbox.isChecked()
+        self.settings['start_at_login'] = self.start_at_login_checkbox.isChecked()
         if self.config.is_flatpak():
-            self.settings['start_at_login'] = False
             self.settings['add_to_app_menu'] = False
         else:
-            self.settings['start_at_login'] = self.start_at_login_checkbox.isChecked()
             self.settings['add_to_app_menu'] = self.add_to_app_menu_checkbox.isChecked()
         self.settings['theme'] = theme_map.get(self.theme_combo.currentIndex(), 'system')
         
@@ -291,8 +297,42 @@ class SettingsDialog(QWidget):
             main_win = self.window()
             if hasattr(main_win, '_install_app_icon_to_hicolor'):
                 icon_path = main_win._install_app_icon_to_hicolor()
+        portal_pending = False
         if self.config.is_flatpak():
             self.config.disable_autostart()
+            pair = (
+                self.settings["start_at_login"],
+                self.settings["start_minimized_to_tray"],
+            )
+            if pair != self._portal_login_snapshot:
+                portal_pending = True
+
+                def _on_portal_done(ok: bool, msg: str) -> None:
+                    if ok:
+                        self._portal_login_snapshot = pair
+                        QMessageBox.information(
+                            self,
+                            "Settings saved",
+                            "Settings saved.\n\n" + msg,
+                        )
+                    else:
+                        self.start_at_login_checkbox.setChecked(self._portal_login_snapshot[0])
+                        self.start_minimized_checkbox.setChecked(self._portal_login_snapshot[1])
+                        self.settings["start_at_login"] = self._portal_login_snapshot[0]
+                        self.settings["start_minimized_to_tray"] = self._portal_login_snapshot[1]
+                        self.config.save_settings(self.settings)
+                        QMessageBox.warning(self, "Login autostart", msg)
+                    self.settings_changed.emit(self.settings)
+
+                from steam_pipewire.utils.portal_background import request_flatpak_login_autostart
+
+                parent = self.window()
+                request_flatpak_login_autostart(
+                    parent if parent is not None else self,
+                    pair[0],
+                    pair[1],
+                    _on_portal_done,
+                )
         elif self.settings['start_at_login']:
             ok, msg = self.config.enable_autostart(self._exec_path, icon_path)
             if not ok:
@@ -307,15 +347,16 @@ class SettingsDialog(QWidget):
                 errors.append(f"Application menu: {msg}")
         else:
             self.config.disable_desktop_entry()
-        self.settings_changed.emit(self.settings)
-        if errors:
-            QMessageBox.warning(
-                self,
-                "Settings saved with errors",
-                "Settings saved, but some options could not be applied:\n\n" + "\n".join(errors)
-            )
-        else:
-            QMessageBox.information(self, "Settings saved", "Settings saved successfully.")
+        if not portal_pending:
+            self.settings_changed.emit(self.settings)
+            if errors:
+                QMessageBox.warning(
+                    self,
+                    "Settings saved with errors",
+                    "Settings saved, but some options could not be applied:\n\n" + "\n".join(errors)
+                )
+            else:
+                QMessageBox.information(self, "Settings saved", "Settings saved successfully.")
         # Apply theme immediately
         theme_str = self.settings['theme'].upper()
         theme = Theme[theme_str] if theme_str in Theme.__members__ else Theme.SYSTEM
@@ -1023,6 +1064,7 @@ class MainWindow(QMainWindow):
             
             f"<p style='margin-top: 20px; color: #666; font-size: 10px;'>"
             f"Version {__import__('steam_pipewire').__version__} | "
+            f"Build {getattr(__import__('steam_pipewire'), '__build_timestamp__', 'unknown')} | "
             f"Config: {self.config.config_dir} | "
             f"Logs: {app_cache_dir('steam-audio-isolator') / 'steam-audio-isolator.log'}"
             "</p>"

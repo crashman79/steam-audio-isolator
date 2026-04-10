@@ -45,7 +45,7 @@ body:
       label: Installation method
       description: How did you install Steam Audio Isolator?
       options:
-        - Standalone binary (from Releases)
+        - Flatpak (GitHub release bundle)
         - Run from source (git clone)
         - Other
     validations:
