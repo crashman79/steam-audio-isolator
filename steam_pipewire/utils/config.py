@@ -330,7 +330,7 @@ class ConfigManager:
             return (
                 False,
                 "Login autostart cannot be enabled from inside this Flatpak. "
-                f"Use your desktop session’s startup settings and add this app, or: flatpak run {aid}",
+                f"Use your desktop session's startup settings and add this app, or: flatpak run {aid}",
             )
         if not exec_path or not exec_path.strip():
             return False, "No executable path available (run from installed binary or use Copy to ~/.local/bin first)."

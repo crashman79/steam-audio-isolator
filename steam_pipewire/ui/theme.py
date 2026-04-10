@@ -222,14 +222,22 @@ class ThemeManager:
                 padding: 3px;
                 border-radius: 3px;
             }}
-            QListWidget, QTextEdit {{
+            QListWidget, QTextEdit, QTableWidget {{
                 background-color: {colors['bg_color']};
                 color: {colors['text_color']};
                 border: 1px solid {colors['border_color']};
                 border-radius: 3px;
+                gridline-color: {colors['border_color']};
             }}
-            QListWidget::item:selected {{
+            QTableWidget::item:selected, QListWidget::item:selected {{
                 background-color: {colors['selection_color']};
+                color: {colors['bg_color']};
+            }}
+            QHeaderView::section {{
+                background-color: {colors['alt_bg_color']};
+                color: {colors['text_color']};
+                border: 1px solid {colors['border_color']};
+                padding: 4px;
             }}
             QCheckBox {{
                 color: {colors['text_color']};
@@ -259,6 +267,9 @@ class ThemeManager:
             QMenu::item:selected {{
                 background-color: {colors['selection_color']};
                 color: {colors['bg_color']};
+            }}
+            QStatusBar {{
+                border-top: 1px solid {colors['border_color']};
             }}
             QScrollBar:vertical {{
                 background-color: {colors['bg_color']};
