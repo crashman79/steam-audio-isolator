@@ -15,11 +15,7 @@ logger = logging.getLogger(__name__)
 from PyQt5.QtCore import QObject, pyqtSlot
 from PyQt5.QtDBus import (
     QDBusConnection,
-    QDBusError,
     QDBusInterface,
-    QDBusMessage,
-    QDBusPendingCallWatcher,
-    QDBusPendingReply,
 )
 
 
@@ -45,6 +41,24 @@ def _flatpak_commandline(start_minimized: bool) -> List[str]:
     if start_minimized:
         cl.append("--minimized")
     return cl
+
+
+def _portal_request_background(parent_window: str, options: dict) -> str:
+    """Call RequestBackground with a correctly typed a{sv} options map."""
+    from gi.repository import GLib
+    from pydbus import SessionBus
+
+    typed_options = {
+        "handle_token": GLib.Variant("s", options["handle_token"]),
+        "reason": GLib.Variant("s", options["reason"]),
+        "autostart": GLib.Variant("b", options["autostart"]),
+        "commandline": GLib.Variant("as", options["commandline"]),
+    }
+    portal = SessionBus().get(
+        "org.freedesktop.portal.Desktop",
+        "/org/freedesktop/portal/desktop",
+    )
+    return str(portal.RequestBackground(parent_window, typed_options))
 
 
 class PortalBackgroundRequest(QObject):
@@ -77,47 +91,19 @@ class PortalBackgroundRequest(QObject):
             "autostart": autostart,
             "commandline": _flatpak_commandline(start_minimized),
         }
-        msg = QDBusMessage.createMethodCall(
-            "org.freedesktop.portal.Desktop",
-            "/org/freedesktop/portal/desktop",
-            "org.freedesktop.portal.Background",
-            "RequestBackground",
-        )
-        msg.setArguments([parent_window, opts])
-
-        self._pending = self._bus.asyncCall(msg)
-        self._watcher = QDBusPendingCallWatcher(self._pending)
-        self._watcher.setParent(self)
-        self._watcher.finished.connect(self._on_request_finished)
-
-    def _on_request_finished(self) -> None:
-        pr = QDBusPendingReply(self._watcher)
-        self._watcher.deleteLater()
-        if not pr.isFinished():
-            self._finish(False, "Portal call did not complete.")
+        try:
+            self._handle_path = _portal_request_background(parent_window, opts)
+        except Exception as exc:
+            self._finish(False, f"Portal error: {exc}")
             return
-        if pr.isError():
-            de: QDBusError = pr.error()
-            err = de.message() or "unknown D-Bus error"
-            self._finish(False, f"Portal error: {err}")
-            return
-        reply = pr.reply()
 
-        if reply.type() != QDBusMessage.ReplyMessage:
-            err = reply.errorMessage() or "unknown D-Bus error"
-            logger.warning("RequestBackground failed: %s", err)
-            self._finish(False, f"Could not open system dialog: {err}")
-            return
-        args = reply.arguments()
-        if not args:
+        if not self._handle_path:
             self._finish(False, "Portal returned an empty reply.")
             return
-        h = args[0]
-        path = h.path() if hasattr(h, "path") else str(h)
-        self._handle_path = path
+
         ok = self._bus.connect(
             "org.freedesktop.portal.Desktop",
-            path,
+            self._handle_path,
             "org.freedesktop.portal.Request",
             "Response",
             self._on_response,
