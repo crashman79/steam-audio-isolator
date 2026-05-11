@@ -7,6 +7,7 @@ from PyQt5.QtWidgets import (
     QFileDialog, QMessageBox, QComboBox, QListWidget, QListWidgetItem,
     QTabWidget, QTextEdit, QSpinBox, QLineEdit, QSystemTrayIcon, QMenu, QAction,
     QApplication, QSizePolicy, QTableWidget, QTableWidgetItem, QHeaderView,
+    QSplitter,
 )
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
 from PyQt5.QtGui import (
@@ -483,10 +484,6 @@ class MainWindow(QMainWindow):
         routing_tab = self.create_routing_tab()
         self.tab_widget.addTab(routing_tab, "Audio Routing")
         
-        # Current routes tab
-        routes_tab = self.create_routes_tab()
-        self.tab_widget.addTab(routes_tab, "Current Routes")
-        
         # Info tab
         info_tab = self.create_info_tab()
         self.tab_widget.addTab(info_tab, "System Info")
@@ -778,7 +775,7 @@ class MainWindow(QMainWindow):
         self.sources_group = QGroupBox("Available Audio Sources")
         self.sources_layout = QVBoxLayout(self.sources_group)
         scroll.setWidget(self.sources_group)
-        layout.addWidget(scroll)
+        scroll.setMinimumHeight(180)
 
         # Control buttons
         button_layout = QHBoxLayout()
@@ -801,13 +798,26 @@ class MainWindow(QMainWindow):
 
         layout.addLayout(button_layout)
 
+        # Sources and current routes share a vertical splitter for better small-window behavior.
+        routes_group = self.create_routes_tab()
+        routes_group.setMinimumHeight(180)
+
+        content_splitter = QSplitter(Qt.Vertical)
+        content_splitter.setChildrenCollapsible(False)
+        content_splitter.addWidget(scroll)
+        content_splitter.addWidget(routes_group)
+        content_splitter.setStretchFactor(0, 3)
+        content_splitter.setStretchFactor(1, 2)
+        content_splitter.setSizes([420, 260])
+        layout.addWidget(content_splitter, 1)
+
         widget.setLayout(layout)
         return widget
 
     def create_routes_tab(self) -> QWidget:
-        """Create the current routes display tab"""
-        widget = QWidget()
-        layout = QVBoxLayout()
+        """Create the current routes display section"""
+        section = QGroupBox("Current Routes")
+        layout = QVBoxLayout(section)
 
         intro = QLabel(
             "Direct links from sources → Steam game recording input. "
@@ -846,8 +856,7 @@ class MainWindow(QMainWindow):
         refresh_routes_btn.clicked.connect(self.update_current_routes)
         layout.addWidget(refresh_routes_btn)
 
-        widget.setLayout(layout)
-        return widget
+        return section
 
     def create_info_tab(self) -> QWidget:
         """Create the system information tab"""
@@ -1052,7 +1061,7 @@ class MainWindow(QMainWindow):
             "<ol>"
             "<li><b>Audio Routing Tab:</b> Check the games you want to record</li>"
             "<li>Click <b>Apply Routing</b> to create direct connections</li>"
-            "<li><b>Current Routes Tab:</b> Table of active links to Steam (auto-refreshed)</li>"
+            "<li><b>Current Routes Section:</b> Table of active links to Steam (auto-refreshed)</li>"
             "<li><b>Profiles Tab:</b> Save/load routing configurations</li>"
             "<li><b>Settings Tab:</b> Configure behavior and preferences</li>"
             "</ol>"
@@ -1700,7 +1709,7 @@ class MainWindow(QMainWindow):
                     self,
                     "Success",
                     f"Audio routing applied!\n{message}\n\n"
-                    "The Current Routes tab updates automatically; open it to verify.",
+                    "The Current Routes section updates automatically; use it to verify.",
                 )
             else:
                 QMessageBox.warning(self, "Partial Success", f"Some routes may have failed.\n{message}")
