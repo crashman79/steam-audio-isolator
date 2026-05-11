@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Login autostart portal call no longer fails with portal argument type errors. The Flatpak `RequestBackground` call now uses typed `GLib.Variant` values so the portal receives the required `(sa{sv})` signature and `commandline` is sent as `as`.
 
+### Changed
+- Moved Current Routes from a standalone tab into a dedicated section on the Audio Routing tab, keeping the same auto-refresh and manual refresh behavior.
+- Audio Routing tab now uses a vertical splitter between Available Audio Sources and Current Routes so both sections stay usable on smaller window heights.
 
 ## [0.3.15] - 2026-04-10
 
