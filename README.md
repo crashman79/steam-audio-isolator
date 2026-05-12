@@ -62,20 +62,34 @@ Steam Audio Isolator creates direct audio connections from your game to Steam Ga
 *   **Auto-Apply Routing**: Automatically routes newly detected games.
 
 ## Screenshots
-(Images are kept as is, assuming they are correct placeholders)
 
-[Image Placeholder: Main window showing a game with multiple audio channels (auto-detected and selected), Vivaldi browser with video playback, and system audio sources]
+<p align="center">
+    <img src="screenshots/main-window-dark.png" alt="Main Window - Dark Theme" width="800">
+    <br><em>Main window showing a game with multiple audio channels (auto-detected and selected), Vivaldi browser with video playback, and system audio sources</em>
+</p>
 
-[Image Placeholder: Visual routing diagram showing direct connections from game audio channels to Steam Game Recording]
+<p align="center">
+    <img src="screenshots/in-app%20routing%20diagram.png" alt="Routing Diagram" width="800">
+    <br><em>Visual routing diagram showing direct connections from game audio channels to Steam Game Recording</em>
+</p>
 
-[Image Placeholder: Settings panel (appearance, tray, autostart, auto-detect interval)]
+<p align="center">
+    <img src="screenshots/settings%20window.png" alt="Settings Window" width="800">
+    <br><em>Settings panel (appearance, tray, autostart, auto-detect interval)</em>
+</p>
 
 <details>
 <summary>Click to see routing comparison in qpwgraph</summary>
 
-[Image Placeholder: qpwgraph before routing - all audio flows through the default sink (speakers), including game audio, browser, and system sounds]
+<p align="center">
+    <img src="screenshots/before%20routing.png" alt="Before Routing" width="800">
+    <br><em>qpwgraph before routing - all audio flows through the default sink (speakers), including game audio, browser, and system sounds</em>
+</p>
 
-[Image Placeholder: qpwgraph after routing - game audio has direct connections to Steam Game Recording input, bypassing the sink. Browser and system audio remain on speakers (not recorded)]
+<p align="center">
+    <img src="screenshots/after%20routing.png" alt="After Routing" width="800">
+    <br><em>qpwgraph after routing - game audio has direct connections to Steam Game Recording input, bypassing the sink. Browser and system audio remain on speakers (not recorded)</em>
+</p>
 </details>
 
 ## Installation
