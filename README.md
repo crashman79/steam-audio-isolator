@@ -64,18 +64,13 @@ Steam Audio Isolator creates direct audio connections from your game to Steam Ga
 ## Screenshots
 
 <p align="center">
-    <img src="screenshots/main-window-dark.png" alt="Main Window - Dark Theme" width="800">
-    <br><em>Main window showing a game with multiple audio channels (auto-detected and selected), Vivaldi browser with video playback, and system audio sources</em>
+    <img src="screenshots/steam-audio-isolator%20main%20tab.png" alt="Steam Audio Isolator Main Tab" width="800">
+    <br><em>Main tab showing the current routing UI after the recent layout revisions</em>
 </p>
 
 <p align="center">
-    <img src="screenshots/in-app%20routing%20diagram.png" alt="Routing Diagram" width="800">
-    <br><em>Visual routing diagram showing direct connections from game audio channels to Steam Game Recording</em>
-</p>
-
-<p align="center">
-    <img src="screenshots/settings%20window.png" alt="Settings Window" width="800">
-    <br><em>Settings panel (appearance, tray, autostart, auto-detect interval)</em>
+    <img src="screenshots/steam-audio-isolator%20settings%20tab.png" alt="Steam Audio Isolator Settings Tab" width="800">
+    <br><em>Settings tab showing the updated configuration layout</em>
 </p>
 
 <details>
