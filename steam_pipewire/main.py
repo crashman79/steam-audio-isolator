@@ -154,8 +154,8 @@ def main():
         exec_path = get_autostart_exec_path()
         window = MainWindow(exec_path=exec_path)
         start_minimized = minimized_from_cli or settings.get("start_minimized_to_tray")
-        if start_minimized and window.tray_icon is not None and window.tray_icon.isVisible():
-            # Keep window hidden; only tray icon visible — show popup so user notices
+        if start_minimized and window.tray_icon is not None:
+            # Keep window hidden; only tray icon visible (or pending tray host attach).
             QTimer.singleShot(800, window.show_tray_launch_notification)
         else:
             window.show()

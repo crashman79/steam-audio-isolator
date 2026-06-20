@@ -56,6 +56,7 @@ Steam Audio Isolator creates direct audio connections from your game to Steam Ga
 *   **Flexible Settings**:
     *   Auto-detect interval (how often to check for new audio sources)
     *   Restore default on close (reconnect audio sink when quitting)
+    *   Multi-game mode (route all selected games, or focus on one game)
     *   Minimize to tray vs. close behavior
     *   Add to application menu and Start when I log in (app manages desktop and autostart entries itself)
 *   **Stream Purpose Detection**: Identifies main audio vs. UI sounds vs. voice chat.
@@ -174,6 +175,7 @@ which pw-dump pw-cli
 *   **Show confirmation when closing**: Prompts before quitting.
 *   **Auto-detect interval**: How often (in seconds) to check for new audio sources.
 *   **Automatically apply routing when new games are detected**: Optional auto-apply feature.
+*   **Multi-game mode**: Route all selected games, or route only one focused game (preferred game title if present, otherwise newest active game).
 *   **Minimize to tray**: Close button hides to tray instead of quitting.
 *   **Start minimized to tray**: App starts with only the tray icon visible.
 *   **Flatpak:** "Start when I log in" uses **xdg-desktop-portal** (`RequestBackground`) so KDE, GNOME, and other portal-enabled desktops show a system permission dialog instead of a sandbox-only autostart file. “Add to menu” / “copy to ~/.local/bin” are not offered; use `flatpak update` for updates.

@@ -62,6 +62,8 @@ class AppSettings:
     preferred_sink: Optional[str] = None
     excluded_games: List[str] = field(default_factory=list)
     auto_apply_games: bool = True
+    multi_game_mode: str = "all"  # all or single
+    preferred_game_name: str = ""
     minimize_to_tray: bool = True
     theme: str = "system"  # light, dark, or system
     start_minimized_to_tray: bool = False
