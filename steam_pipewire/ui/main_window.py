@@ -194,6 +194,33 @@ class SettingsDialog(QWidget):
             "When disabled, you must manually click 'Apply Routing' after games are detected."
         ))
         
+
+        multi_game_row = QHBoxLayout()
+        multi_game_row.addWidget(QLabel("When multiple games are selected:"))
+        self.multi_game_mode_combo = QComboBox()
+        self.multi_game_mode_combo.addItems([
+            "Route all selected games",
+            "Route one selected game (focus mode)",
+        ])
+        mode = (self.settings.get('multi_game_mode', 'all') or 'all').lower()
+        self.multi_game_mode_combo.setCurrentIndex(1 if mode == 'single' else 0)
+        self.multi_game_mode_combo.currentIndexChanged.connect(self._on_settings_changed)
+        multi_game_row.addWidget(self.multi_game_mode_combo)
+        multi_game_row.addStretch()
+        interval_layout.addLayout(multi_game_row)
+
+        preferred_row = QHBoxLayout()
+        preferred_row.addWidget(QLabel("Preferred game title (optional):"))
+        self.preferred_game_input = QLineEdit()
+        self.preferred_game_input.setPlaceholderText("Exact game title from source list")
+        self.preferred_game_input.setText(self.settings.get('preferred_game_name', ''))
+        self.preferred_game_input.textChanged.connect(self._on_settings_changed)
+        preferred_row.addWidget(self.preferred_game_input)
+        interval_layout.addLayout(preferred_row)
+        interval_layout.addWidget(QLabel(
+            "Focus mode keeps only one game's audio connected when multiple games run.\n"
+            "If Preferred game title is set and present, it wins; otherwise newest detected game is used."
+        ))
         interval_group.setLayout(interval_layout)
         left.addWidget(interval_group)
         left.addStretch()
@@ -279,6 +306,8 @@ class SettingsDialog(QWidget):
         self.settings['prompt_on_close'] = self.prompt_checkbox.isChecked()
         self.settings['auto_detect_interval'] = self.interval_spinbox.value()
         self.settings['auto_apply_games'] = self.auto_apply_checkbox.isChecked()
+        self.settings['multi_game_mode'] = 'single' if self.multi_game_mode_combo.currentIndex() == 1 else 'all'
+        self.settings['preferred_game_name'] = self.preferred_game_input.text().strip()
         self.settings['minimize_to_tray'] = self.tray_checkbox.isChecked()
         self.settings['start_minimized_to_tray'] = self.start_minimized_checkbox.isChecked()
         self.settings['start_at_login'] = self.start_at_login_checkbox.isChecked()
@@ -509,10 +538,10 @@ class MainWindow(QMainWindow):
         import logging
         logger = logging.getLogger(__name__)
         
-        # Check if system tray is available
+        # Some shells delay tray host registration (or keep it hidden at login).
+        # Create the icon anyway so Qt can attach it when the host appears.
         if not QSystemTrayIcon.isSystemTrayAvailable():
-            logger.warning("System tray not available on this system")
-            return
+            logger.warning("System tray host not available yet; initializing tray icon anyway")
         
         # Create custom colored icon
         icon = self.create_app_icon()
@@ -592,9 +621,13 @@ class MainWindow(QMainWindow):
                     f"Routed {len(names)} games to Steam recording:\n"
                     f"{self._format_game_names_line(names)}"
                 )
+            if detail_message:
+                body += f"\n{detail_message}"
             status = f"Routed to Steam: {self._format_game_names_line(names, max_shown=3)}"
         elif success:
             body = "Audio routing applied to Steam recording."
+            if detail_message:
+                body += f"\n{detail_message}"
             status = "Routed to Steam recording"
         else:
             line = self._format_game_names_line(names) if names else ""
@@ -1343,10 +1376,12 @@ class MainWindow(QMainWindow):
                 )
                 return
             
-            selected_source_ids = [s['id'] for s in self.sources if s['name'] in self.selected_sources]
+            selected_source_ids, routed_game_names, routing_note = self._resolve_selected_sources_for_routing()
             
             if selected_source_ids:
                 feedback_names = _names_for_feedback()
+                if routed_game_names:
+                    feedback_names = set(routed_game_names)
                 if not feedback_names:
                     feedback_names = {
                         s['name']
@@ -1359,7 +1394,7 @@ class MainWindow(QMainWindow):
                 
                 if success:
                     logger.info(f"Auto-apply successful: {message}")
-                    self._notify_auto_routed_games(feedback_names, True)
+                    self._notify_auto_routed_games(feedback_names, True, routing_note)
                     
                     # Update routes display
                     self.route_check_timer = QTimer()
@@ -1390,18 +1425,19 @@ class MainWindow(QMainWindow):
         prompt_on_close = self.settings.get('prompt_on_close', True)
         
         # If trying to close via window X button and tray is enabled, minimize instead
-        if not self.is_closing and minimize_to_tray and self.tray_icon and self.tray_icon.isVisible():
+        if not self.is_closing and minimize_to_tray and self.tray_icon:
             # Minimizing to tray — show popup so user sees it's in the tray
             logger.debug("Minimizing to system tray")
             self.hide()
             event.ignore()
             restore_msg = "Routes will be restored to default when you quit." if restore_on_close else "Current routes will be kept when you quit."
-            self.tray_icon.showMessage(
-                "Steam Audio Isolator",
-                f"Minimized to system tray.\n{restore_msg}\nClick tray icon to open; right-click to quit.",
-                QSystemTrayIcon.Information,
-                4000
-            )
+            if self.tray_icon.isVisible():
+                self.tray_icon.showMessage(
+                    "Steam Audio Isolator",
+                    f"Minimized to system tray.\n{restore_msg}\nClick tray icon to open; right-click to quit.",
+                    QSystemTrayIcon.Information,
+                    4000
+                )
             return
         
         # Actually closing the application - show confirmation if enabled
@@ -1670,6 +1706,47 @@ class MainWindow(QMainWindow):
         else:
             self.selected_sources.discard(source['name'])
 
+    @staticmethod
+    def _source_pid(source):
+        """Best-effort process id for stable newest-game selection."""
+        props = source.get('props', {})
+        try:
+            return int(props.get('application.process.id', 0))
+        except (TypeError, ValueError):
+            return 0
+
+    def _resolve_selected_sources_for_routing(self):
+        """Return source ids to route, routed game names, and a status note."""
+        selected_entries = [s for s in self.sources if s['name'] in self.selected_sources]
+        if not selected_entries:
+            return [], set(), ""
+
+        mode = (self.settings.get('multi_game_mode', 'all') or 'all').lower()
+        if mode != 'single':
+            game_names = {s['name'] for s in selected_entries if s.get('type') == 'Game'}
+            return [s['id'] for s in selected_entries], game_names, ""
+
+        game_entries = [s for s in selected_entries if s.get('type') == 'Game']
+        game_names = sorted({s['name'] for s in game_entries})
+        if len(game_names) <= 1:
+            return [s['id'] for s in selected_entries], set(game_names), ""
+
+        preferred_name = (self.settings.get('preferred_game_name', '') or '').strip()
+        if preferred_name and preferred_name in game_names:
+            chosen_game = preferred_name
+            reason = "preferred title"
+        else:
+            newest = max(game_entries, key=lambda s: (self._source_pid(s), int(s.get('id', 0))))
+            chosen_game = newest['name']
+            reason = "newest active game"
+
+        filtered_entries = [
+            s for s in selected_entries
+            if s.get('type') != 'Game' or s['name'] == chosen_game
+        ]
+        note = f"Focus mode kept only «{chosen_game}» ({reason})."
+        return [s['id'] for s in filtered_entries], {chosen_game}, note
+
     def apply_routing(self):
         """Apply the selected audio routing"""
         import logging
@@ -1695,7 +1772,10 @@ class MainWindow(QMainWindow):
                 )
                 return
 
-            selected_source_ids = [s['id'] for s in self.sources if s['name'] in self.selected_sources]
+            selected_source_ids, routed_game_names, routing_note = self._resolve_selected_sources_for_routing()
+            if not selected_source_ids:
+                QMessageBox.warning(self, "Warning", "Selected sources are no longer available. Refresh sources and try again.")
+                return
             
             logger.debug(f"apply_routing: selected_sources={self.selected_sources}")
             logger.debug(f"apply_routing: all sources={[(s['id'], s['name']) for s in self.sources]}")
@@ -1705,14 +1785,21 @@ class MainWindow(QMainWindow):
             success, message = self.pipewire.create_audio_routing(selected_source_ids, steam_node_id)
             
             if success:
+                routed_line = ""
+                if routed_game_names:
+                    routed_line = f"\n\nRouted game audio: {self._format_game_names_line(sorted(routed_game_names))}"
+                if routing_note:
+                    routed_line += f"\n{routing_note}"
                 QMessageBox.information(
                     self,
                     "Success",
                     f"Audio routing applied!\n{message}\n\n"
-                    "The Current Routes section updates automatically; use it to verify.",
+                    "The Current Routes section updates automatically; use it to verify."
+                    f"{routed_line}",
                 )
             else:
-                QMessageBox.warning(self, "Partial Success", f"Some routes may have failed.\n{message}")
+                extra = f"\n{routing_note}" if routing_note else ""
+                QMessageBox.warning(self, "Partial Success", f"Some routes may have failed.\n{message}{extra}")
             
             # Small delay then update routes display
             self.route_check_timer = QTimer()
@@ -1873,20 +1960,28 @@ class MainWindow(QMainWindow):
     def _update_routing_instructions(self):
         """Update routing instructions text based on auto-apply setting"""
         auto_apply = self.settings.get('auto_apply_games', True)
+        focus_mode = (self.settings.get('multi_game_mode', 'all') or 'all').lower() == 'single'
+        focus_line = (
+            "🎯 <b>Multi-game mode:</b> Focus mode routes one selected game (preferred title or newest game)."
+            if focus_mode
+            else "🎯 <b>Multi-game mode:</b> All selected games are routed."
+        )
         
         if auto_apply:
             text = (
                 "Select audio sources you want to include in Steam recording.\n"
                 "Only selected sources will be captured by Steam's game recording feature.\n\n"
                 "🔄 <b>Auto-apply is ENABLED</b> - New games will be automatically routed to Steam.\n"
-                "You can manually click '<b>Apply Routing</b>' to update connections at any time."
+                "You can manually click '<b>Apply Routing</b>' to update connections at any time.\n"
+                f"{focus_line}"
             )
         else:
             text = (
                 "Select audio sources you want to include in Steam recording.\n"
                 "Only selected sources will be captured by Steam's game recording feature.\n\n"
                 "💡 <b>Auto-apply is DISABLED</b> - New games are detected and selected, but NOT connected.\n"
-                "You must click '<b>Apply Routing</b>' button below to activate the connections."
+                "You must click '<b>Apply Routing</b>' button below to activate the connections.\n"
+                f"{focus_line}"
             )
         
         self.routing_instructions.setText(text)

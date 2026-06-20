@@ -7,8 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Multi-game routing preference: choose between routing all selected games or a single focused game when multiple games are active. Focus mode supports an optional preferred game title and otherwise falls back to the newest active game process.
+
 ### Fixed
 - Login autostart portal call no longer fails with portal argument type errors. The Flatpak `RequestBackground` call now uses typed `GLib.Variant` values so the portal receives the required `(sa{sv})` signature and `commandline` is sent as `as`.
+- Start minimized to tray now works when the desktop tray host is hidden or initializes late at session start; tray icon setup no longer bails out early, and startup/close minimize logic no longer depends on immediate tray visibility.
 
 ### Changed
 - Moved Current Routes from a standalone tab into a dedicated section on the Audio Routing tab, keeping the same auto-refresh and manual refresh behavior.
