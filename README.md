@@ -364,9 +364,9 @@ Non-Flatpak builds use the normal XDG locations under `~/.config/` and
 
 ## Development note
 
-Some code and documentation were developed with LLM-assisted tooling. The
-maintainer reviews, tests, and takes responsibility for every change. AI tools
-are not project contributors.
+GitHub Copilot and OpenCode have been used for development, diagnostic debugging,
+and troubleshooting. The maintainer reviews, tests, and takes responsibility for
+every change. These tools are not project contributors.
 
 ---
 
