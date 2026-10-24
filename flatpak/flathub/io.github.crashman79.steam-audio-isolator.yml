@@ -101,9 +101,9 @@ modules:
           fi
         done
     sources:
-      # v0.4.0 is the first release with the PyQt6 migration. Pin the resulting
-      # commit when preparing the actual Flathub submission.
+      # v0.5.0 is the latest release. Pin the resulting commit when preparing
+      # the actual Flathub submission.
       - type: git
         url: https://github.com/crashman79/steam-audio-isolator.git
-        tag: v0.4.1
-        commit: b1821aee31343b6110097c1e5bfd56f1375d988e
+        tag: v0.5.0
+        commit: 4774bd2bf914596f68ea0e1b83b903d079c09291
