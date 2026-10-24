@@ -93,14 +93,12 @@ docs/_build/
 # AI/agent tooling (local only)
 .cursor/
 .cursorrules
-.claude/
 .codex/
 .opencode/
 .continue/
 .windsurf/
 .aider*
 AGENTS.md
-CLAUDE.md
 COPILOT.md
 GEMINI.md
 .github/copilot-instructions.md
