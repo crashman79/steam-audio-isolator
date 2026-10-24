@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-10-24
+
+### Changed
+- The Current Routes table now updates only when the detected route list changes. Background polling still runs on the source-detection interval, but it no longer rebuilds the table or rewrites the status line every few seconds. **Refresh now** reports the result even when nothing changed.
+- Rewrote the README around the real UI and workflow: five tabs, Current Routes as a section, exclusions, focus mode, profiles, tray/quit behavior, settings defaults, and limitations. Refreshed the main and Settings screenshots.
+
+### Fixed
+- Long explanatory labels in Settings (including the Flatpak login-startup hint) and the window header note now wrap instead of being clipped at the right edge.
+
 ## [0.5.0] - 2026-10-24
 
 ### Changed
