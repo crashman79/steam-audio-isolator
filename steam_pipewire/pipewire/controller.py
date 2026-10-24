@@ -598,6 +598,29 @@ class PipeWireController:
             logger.debug(f"Error removing routing: {e}")
             return False
 
+    def disconnect_source_from_steam(self, source_node_id: int) -> Tuple[bool, str]:
+        """Remove every link from one source node to Steam's recording input.
+
+        Used when the user unchecks/excludes a source so the change takes effect
+        immediately rather than waiting for the next Apply Routing.
+        """
+        removed = 0
+        failed = 0
+        for route in self.get_current_routes():
+            if route.get('source_node_id') != source_node_id:
+                continue
+            if self.remove_routing(route['link_id']):
+                removed += 1
+            else:
+                failed += 1
+
+        if removed == 0 and failed == 0:
+            return True, "Source is not connected to Steam"
+        message = f"Removed {removed} link(s) from Steam"
+        if failed:
+            message += f" ({failed} failed)"
+        return failed == 0, message
+
     def disconnect_all_from_steam(self) -> Tuple[bool, str]:
         """Disconnect all sources from Steam recording
         

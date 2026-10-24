@@ -70,6 +70,9 @@ class AppSettings:
     start_at_login: bool = False
     add_to_app_menu: bool = False
     install_prompt_shown: bool = False
+    # UI layout persistence
+    window_geometry: str = ""
+    routing_splitter_sizes: List[int] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization"""
@@ -253,6 +256,21 @@ class ConfigManager:
             excluded.remove(game_name)
             return self.set_setting('excluded_games', excluded)
         return True
+
+    # Source-oriented aliases. The persisted key remains ``excluded_games`` for
+    # backward compatibility with existing settings, but the list now covers any
+    # audio source the user has opted out of auto-routing.
+    def get_excluded_sources(self) -> list:
+        """Get sources excluded from auto-selection/routing."""
+        return self.get_excluded_games()
+
+    def add_excluded_source(self, source_name: str) -> bool:
+        """Permanently exclude a source from auto-selection/routing."""
+        return self.add_excluded_game(source_name)
+
+    def remove_excluded_source(self, source_name: str) -> bool:
+        """Remove a source from the permanent exclusion list."""
+        return self.remove_excluded_game(source_name)
 
     def is_frozen(self) -> bool:
         """Return True when running as PyInstaller binary."""

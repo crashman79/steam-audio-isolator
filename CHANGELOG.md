@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-24
+
+### Changed
+- Hovering a source now shows an interactive popover (instead of a native tooltip). For system/output sources the audio-loop warning is collapsed with a "More ▸" button that expands the full message in place; the popover is a child of the main window so it positions reliably on Wayland and stays clickable.
+
 ## [0.4.1] - 2026-10-24
 
 ### Fixed
@@ -15,9 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.4.0] - 2026-10-23
 
 ### Added
+- Sticky source exclusions: unchecking an auto-routed source now disconnects it from Steam immediately and excludes it temporarily (until the source/process is rediscovered). Right-click an excluded source to include it again, or use the right-click menu for a permanent exclusion.
 - Multi-game routing preference: choose between routing all selected games or a single focused game when multiple games are active. Focus mode supports an optional preferred game title and otherwise falls back to the newest active game process.
 
 ### Fixed
+- PyQt6 checkbox handling: `stateChanged` emits an integer, so manual checks were compared against `Qt.CheckState.Checked` incorrectly and could be treated as unchecks. The comparison now uses the enum value.
+- Source context menus now use `QMenu.exec()` instead of `popup()`. In PyQt6 a local menu passed to `popup()` is garbage-collected immediately, so the right-click exclusion options never appeared.
 - Game detection now resolves missing process metadata from the PipeWire **Client** object (`client.id`). Wine/Proton streams connect directly to libpipewire and often expose `application.process.binary`/`id` only on the client, not on the node; this restores game classification and PID/AppID lookups for those streams.
 - Wine/Proton streams that expose only `application.name` (no `application.process.binary`/PID), such as `One Million Coins.exe`, are now classified as games instead of applications, so game selection and auto-apply work.
 - Current Routes channel labels now use the port's real `audio.channel` (FL/FR) instead of port-ID parity; Wine output ports are both odd, which previously labelled both channels as "Right".
@@ -27,6 +35,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Start minimized to tray now works when the desktop tray host is hidden or initializes late at session start; tray icon setup no longer bails out early, and startup/close minimize logic no longer depends on immediate tray visibility.
 
 ### Changed
+- Long audio source names are elided with an ellipsis so the window can be narrowed. The full name is shown in the hover tooltip after the normal Qt delay, and exclusion state is now a right-aligned badge so it remains visible when the name is truncated.
+- Audio Routing tab is more compact: condensed instructions with details in the tooltip, source type headers instead of nested group boxes, and a single header row for Current Routes.
+- Window size/position and the sources/routes splitter position are now persisted across restarts, so an expanded window stays expanded.
 - Migrated the GUI from PyQt5 5.15 to **PyQt6 6.11** (scoped Qt enums, `QAction` moved to `QtGui`, `exec()`, stricter `QBrush` arguments, QtDBus portal calls).
 - Flatpak runtime updated from the end-of-life Freedesktop **24.08** to **25.08** (Python 3.13), and the bundled PipeWire client from **1.2.7** to **1.6.10** so it matches current host daemons.
 - Removed the unmaintained `pydbus`/PyGObject dependency. Login autostart now calls `org.freedesktop.portal.Background` directly over QtDBus with a properly typed `a{sv}` options map.

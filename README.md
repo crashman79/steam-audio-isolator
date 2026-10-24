@@ -57,6 +57,8 @@ Steam Audio Isolator creates direct audio connections from your game to Steam Ga
     *   Auto-detect interval (how often to check for new audio sources)
     *   Restore default on close (reconnect audio sink when quitting)
     *   Multi-game mode (route all selected games, or focus on one game)
+    *   Sticky source exclusions (uncheck = temporary; right-click for permanent)
+    *   Long source names elide with an ellipsis; hover for an interactive popover showing the full name and (for system sources) an expandable audio-loop warning
     *   Minimize to tray vs. close behavior
     *   Add to application menu and Start when I log in (app manages desktop and autostart entries itself)
 *   **Stream Purpose Detection**: Identifies main audio vs. UI sounds vs. voice chat.
@@ -175,6 +177,8 @@ which pw-dump pw-cli
 *   **Show confirmation when closing**: Prompts before quitting.
 *   **Auto-detect interval**: How often (in seconds) to check for new audio sources.
 *   **Automatically apply routing when new games are detected**: Optional auto-apply feature.
+*   **Sticky source exclusions**: Unchecking a routed source disconnects it immediately and excludes it until it is rediscovered. Right-click for a permanent exclusion; re-checking clears it.
+*   **Layout persistence**: Window size/position and the sources/routes splitter position are remembered across restarts.
 *   **Multi-game mode**: Route all selected games, or route only one focused game (preferred game title if present, otherwise newest active game).
 *   **Minimize to tray**: Close button hides to tray instead of quitting.
 *   **Start minimized to tray**: App starts with only the tray icon visible.

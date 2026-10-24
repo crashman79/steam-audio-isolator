@@ -7,9 +7,9 @@ from PyQt6.QtWidgets import (
     QFileDialog, QMessageBox, QComboBox, QListWidget, QListWidgetItem,
     QTabWidget, QTextEdit, QSpinBox, QLineEdit, QSystemTrayIcon, QMenu,
     QApplication, QSizePolicy, QTableWidget, QTableWidgetItem, QHeaderView,
-    QSplitter, QAbstractItemView,
+    QSplitter, QAbstractItemView, QStyle, QStyleOptionButton,
 )
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QByteArray, QSize
 from PyQt6.QtGui import (
     QAction, QColor, QFont, QKeySequence, QIcon, QPixmap, QPainter, QPen, QBrush, QPainterPath,
     QGuiApplication, QCursor,
@@ -21,6 +21,185 @@ from steam_pipewire.pipewire.controller import PipeWireController
 from steam_pipewire.utils.config import ConfigManager, flatpak_app_id
 from steam_pipewire.utils.xdg_paths import app_cache_dir, xdg_data_home
 from steam_pipewire.ui.theme import ThemeManager, Theme
+
+
+class ElidedCheckBox(QCheckBox):
+    """Checkbox whose visible text is elided with an ellipsis when space is tight.
+
+    The full text is retained for the interactive hover popover (SourceTooltip),
+    so hovering reveals the complete name after a short delay.
+    """
+
+    # Emitted when the mouse enters/leaves the checkbox (drives the popover).
+    hovered = pyqtSignal()
+    unhovered = pyqtSignal()
+
+    def __init__(self, text: str, parent=None):
+        super().__init__(text, parent)
+        self._full_text = text
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.setMinimumWidth(120)
+
+    def setText(self, text: str) -> None:
+        self._full_text = text
+        super().setText(text)
+
+    def minimumSizeHint(self):
+        hint = super().minimumSizeHint()
+        return QSize(120, hint.height())
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        option = QStyleOptionButton()
+        self.initStyleOption(option)
+        text_rect = self.style().subElementRect(
+            QStyle.SubElement.SE_CheckBoxContents, option, self
+        )
+        option.text = self.fontMetrics().elidedText(
+            self._full_text,
+            Qt.TextElideMode.ElideRight,
+            max(0, text_rect.width()),
+        )
+        self.style().drawControl(
+            QStyle.ControlElement.CE_CheckBox, option, painter, self
+        )
+
+    def enterEvent(self, event):
+        self.hovered.emit()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self.unhovered.emit()
+        super().leaveEvent(event)
+
+
+class SourceTooltip(QWidget):
+    """Interactive hover popover anchored under a source row.
+
+    Native Qt tooltips cannot be clicked, and on Wayland a separate popup
+    window cannot be reliably positioned, so this widget lives *inside* the
+    main window (the same surface) and is moved in window-local coordinates.
+    For system/output sources it shows a collapsible warning with a
+    "More ▸" button that expands the message in place.
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._expanded = False
+        self._anchor = None
+        self._parent_window = None
+        self.setObjectName("SourceTooltip")
+        self.setStyleSheet(
+            "QWidget#SourceTooltip{"
+            "background:#2b2b2b;border:1px solid #666;border-radius:6px;"
+            "}"
+        )
+        self._build_ui()
+        self.hide()
+
+    def _build_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setSpacing(4)
+
+        self.title = QLabel()
+        self.title.setWordWrap(True)
+        self.title.setStyleSheet("font-weight:bold;font-size:12px;color:#f0f0f0;")
+        self.subtitle = QLabel()
+        self.subtitle.setWordWrap(True)
+        self.subtitle.setStyleSheet("font-size:11px;color:#bdbdbd;")
+        self.status_label = QLabel()
+        self.status_label.setWordWrap(True)
+        self.status_label.setStyleSheet("font-size:11px;color:#f0ad4e;")
+        self.status_label.hide()
+
+        self.warn_button = QPushButton()
+        self.warn_button.setFlat(True)
+        self.warn_button.setStyleSheet(
+            "QPushButton{text-align:left;color:#ff6b6b;font-size:11px;"
+            "border:none;padding:0;}"
+            "QPushButton:hover{color:#ff8f8f;}"
+        )
+        self.warn_button.clicked.connect(self._toggle_warn)
+        self.warn_button.hide()
+
+        self.warn_text = QLabel()
+        self.warn_text.setWordWrap(True)
+        self.warn_text.setText(self._WARN_DETAIL)
+        self.warn_text.setStyleSheet("font-size:11px;color:#ff8f8f;")
+        self.warn_text.hide()
+
+        self.hint_label = QLabel()
+        self.hint_label.setWordWrap(True)
+        self.hint_label.setStyleSheet("font-size:10px;color:#9e9e9e;")
+
+        layout.addWidget(self.title)
+        layout.addWidget(self.subtitle)
+        layout.addWidget(self.status_label)
+        layout.addWidget(self.warn_button)
+        layout.addWidget(self.warn_text)
+        layout.addWidget(self.hint_label)
+
+    _WARN_DETAIL = (
+        "Routing this source into Steam's recording input can create a feedback "
+        "loop: the audio you hear (speakers/headphones) is fed back into the "
+        "capture stream. This may cause echo, distorted sound, or unexpected "
+        "behavior. Only enable this if you intentionally want to record system "
+        "output."
+    )
+
+    def _toggle_warn(self):
+        self._set_expanded(not self._expanded)
+
+    def _set_expanded(self, expanded):
+        self._expanded = expanded
+        self.warn_text.setVisible(expanded)
+        self.warn_button.setText(
+            "⚠ System/output device — details ▾"
+            if expanded
+            else "⚠ System/output device — more ▸"
+        )
+        self.adjustSize()
+        if self.isVisible() and self._parent_window is not None:
+            self._parent_window._reposition_tooltip()
+
+    def show_for(self, data, anchor_widget, parent_window):
+        self.title.setText(data["name"])
+        self.subtitle.setText(f"App: {data['app_name']}")
+        if data.get("status_text"):
+            self.status_label.setText(
+                f"{data['status_text']} — {data['status_tip']}. "
+                "Re-check to include again."
+            )
+            self.status_label.show()
+        else:
+            self.status_label.hide()
+        if data.get("is_system"):
+            self.warn_button.show()
+            self._set_expanded(False)
+            self.hint_label.setText("Right-click to exclude this source.")
+        else:
+            self.warn_button.hide()
+            self.warn_text.hide()
+            self.hint_label.setText(
+                "Right-click for permanent/temporary exclusion."
+            )
+        self.adjustSize()
+        self._anchor = anchor_widget
+        self._parent_window = parent_window
+        parent_window._position_tooltip_for(self, anchor_widget)
+        self.raise_()
+        self.show()
+
+    def enterEvent(self, event):
+        if self._parent_window is not None:
+            self._parent_window._cancel_tooltip_hide()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        if self._parent_window is not None:
+            self._parent_window._schedule_tooltip_hide()
+        super().leaveEvent(event)
 
 
 class SourceDetectorThread(QThread):
@@ -316,7 +495,28 @@ class SettingsDialog(QWidget):
         else:
             self.settings['add_to_app_menu'] = self.add_to_app_menu_checkbox.isChecked()
         self.settings['theme'] = theme_map.get(self.theme_combo.currentIndex(), 'system')
-        
+
+        # Merge only the fields this dialog owns into the current settings.
+        # Saving the dialog's startup snapshot would otherwise clobber newer
+        # exclusions and the persisted window/splitter layout.
+        managed_keys = (
+            'restore_default_on_close',
+            'prompt_on_close',
+            'auto_detect_interval',
+            'auto_apply_games',
+            'multi_game_mode',
+            'preferred_game_name',
+            'minimize_to_tray',
+            'start_minimized_to_tray',
+            'start_at_login',
+            'add_to_app_menu',
+            'theme',
+        )
+        current_settings = self.config.load_settings()
+        for key in managed_keys:
+            if key in self.settings:
+                current_settings[key] = self.settings[key]
+        self.settings = current_settings
         self.config.save_settings(self.settings)
         errors = []
         icon_path = None
@@ -417,13 +617,15 @@ class MainWindow(QMainWindow):
         super().__init__()
         self._exec_path = exec_path or ""
         self.setWindowTitle("Steam Audio Isolator")
-        self.resize(780, 700)
-        self.setMinimumSize(440, 380)
 
         self.pipewire = PipeWireController()
         self.config = ConfigManager()
         self.sources = []
         self.selected_sources = set()
+        # Sources the user unchecked during this session; cleared when the
+        # source disappears so a rediscovered process is auto-routed again.
+        self.temporary_exclusions = set()
+        self._updating_sources_ui = False
         self.detector_thread = None  # Track detector thread to prevent concurrent runs
         self.source_detection_timeout = None  # Watchdog timer for detection
         self.last_sources_hash = None  # Track source changes for auto-detect
@@ -432,7 +634,23 @@ class MainWindow(QMainWindow):
         self._startup_auto_apply_done = False  # One-shot apply when games exist on first scan
         self.routes_poll_timer = None
         self.route_update_thread = None
-        
+        self._content_splitter = None
+        self._layout_save_timer = QTimer(self)
+        self._layout_save_timer.setSingleShot(True)
+        self._layout_save_timer.timeout.connect(self._save_window_geometry)
+
+        # Interactive hover popover (lives inside this window so it positions
+        # reliably on Wayland and can be clicked).
+        self._source_tooltip = SourceTooltip(self)
+        self._tooltip_anchor = None
+        self._tooltip_data = None
+        self._tooltip_show_timer = QTimer(self)
+        self._tooltip_show_timer.setSingleShot(True)
+        self._tooltip_show_timer.timeout.connect(self._show_pending_tooltip)
+        self._tooltip_hide_timer = QTimer(self)
+        self._tooltip_hide_timer.setSingleShot(True)
+        self._tooltip_hide_timer.timeout.connect(self._maybe_hide_tooltip)
+
         # Load settings (theme applied in main() before window creation)
         self.settings = self.config.load_settings()
         
@@ -445,7 +663,7 @@ class MainWindow(QMainWindow):
 
         self.init_ui()
         self.setup_system_tray()
-        self._center_on_work_area()
+        self._restore_window_geometry()
         self.detect_sources()
         self.start_auto_detect()
         self.start_routes_poll()
@@ -467,12 +685,117 @@ class MainWindow(QMainWindow):
         fg.moveCenter(area.center())
         self.move(fg.topLeft())
 
+    def _resize_to_default(self):
+        """Pick a moderate default that fits the current monitor."""
+        app = QGuiApplication.instance()
+        screen = QGuiApplication.screenAt(QCursor.pos()) if app else None
+        if screen is None and app is not None:
+            screen = app.primaryScreen()
+        if screen is None:
+            self.resize(900, 900)
+            return
+        area = screen.availableGeometry()
+        width = min(max(900, int(area.width() * 0.55)), 1100)
+        height = min(max(720, int(area.height() * 0.70)), 1000)
+        # Leave breathing room around the window even on short displays.
+        width = min(width, max(640, area.width() - 80))
+        height = min(height, max(560, area.height() - 120))
+        self.resize(width, height)
+
+    def _clamp_restored_geometry(self):
+        """Only shrink a restored window when it no longer fits the screen."""
+        if self.isMaximized() or self.isFullScreen():
+            return
+        app = QGuiApplication.instance()
+        screen = QGuiApplication.screenAt(self.frameGeometry().center())
+        if screen is None and app is not None:
+            screen = app.primaryScreen()
+        if screen is None:
+            return
+        area = screen.availableGeometry()
+        max_width = max(640, area.width() - 80)
+        max_height = max(560, area.height() - 120)
+        if self.width() > max_width or self.height() > max_height:
+            self.resize(min(self.width(), max_width), min(self.height(), max_height))
+        if not area.contains(self.frameGeometry()):
+            fg = self.frameGeometry()
+            fg.moveCenter(area.center())
+            self.move(fg.topLeft())
+
+    def _restore_window_geometry(self):
+        """Restore window size/position and splitter sizes, or pick a sane default."""
+        self.setMinimumSize(520, 480)
+
+        restored = False
+        saved = self.settings.get('window_geometry')
+        if saved:
+            try:
+                self.restoreGeometry(QByteArray.fromBase64(saved.encode('ascii')))
+                restored = True
+            except Exception:
+                restored = False
+        if restored:
+            self._clamp_restored_geometry()
+        else:
+            self._resize_to_default()
+            self._center_on_work_area()
+
+        if self._content_splitter is not None:
+            sizes = self.settings.get('routing_splitter_sizes')
+            if isinstance(sizes, list) and len(sizes) == 2:
+                try:
+                    total = int(sizes[0]) + int(sizes[1])
+                    # Ignore values captured while the window was hidden: the
+                    # splitter has no real layout height yet and would come back
+                    # cramped on the next launch.
+                    if total >= int(self.height() * 0.5):
+                        self._content_splitter.setSizes(
+                            [max(1, int(sizes[0])), max(1, int(sizes[1]))]
+                        )
+                except Exception:
+                    pass
+
+        # Persist the initial/default geometry too (the window may start hidden
+        # in the tray and never receive a user resize event).
+        QTimer.singleShot(1000, self._save_window_geometry)
+
+    def _schedule_layout_save(self, *args):
+        """Debounce layout writes while the user resizes/moves the window."""
+        timer = getattr(self, '_layout_save_timer', None)
+        if timer is not None:
+            timer.start(600)
+
+    def _save_window_geometry(self):
+        import logging
+        try:
+            geometry = bytes(self.saveGeometry().toBase64()).decode('ascii')
+            self.config.set_setting('window_geometry', geometry)
+            # Splitter sizes are only meaningful once the window has a real
+            # layout (visible); avoid persisting hidden-layout minimums.
+            if self._content_splitter is not None and self.isVisible():
+                self.config.set_setting(
+                    'routing_splitter_sizes', self._content_splitter.sizes()
+                )
+        except Exception as e:
+            logging.getLogger(__name__).debug(f"Could not save window geometry: {e}")
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._source_tooltip.hide()
+        self._schedule_layout_save()
+
+    def moveEvent(self, event):
+        super().moveEvent(event)
+        self._schedule_layout_save()
+
     def init_ui(self):
         """Initialize the user interface"""
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
 
         main_layout = QVBoxLayout()
+        main_layout.setContentsMargins(8, 6, 8, 6)
+        main_layout.setSpacing(6)
 
         # Header with title and info
         header_layout = QHBoxLayout()
@@ -798,20 +1121,35 @@ class MainWindow(QMainWindow):
         self.routing_instructions.setTextFormat(Qt.TextFormat.RichText)
         self.routing_instructions.setWordWrap(True)
         # Keep layout styling but let colors come from the platform theme.
-        self.routing_instructions.setStyleSheet("padding: 8px; border-left: 4px solid #ffc107; border-radius: 3px;")
+        self.routing_instructions.setStyleSheet(
+            "padding: 4px 6px; font-size: 11px; border-left: 4px solid #ffc107; border-radius: 3px;"
+        )
         self._update_routing_instructions()
         layout.addWidget(self.routing_instructions)
 
         # Source list area
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
+        self.sources_scroll = scroll
         self.sources_group = QGroupBox("Available Audio Sources")
+        self.sources_group.setToolTip(
+            "Check sources to include in Steam recording.\n"
+            "Unchecking a routed source disconnects it immediately and excludes it temporarily.\n"
+            "Right-click for a permanent exclusion."
+        )
         self.sources_layout = QVBoxLayout(self.sources_group)
+        self.sources_layout.setContentsMargins(4, 4, 4, 4)
+        self.sources_layout.setSpacing(2)
         scroll.setWidget(self.sources_group)
-        scroll.setMinimumHeight(180)
+        scroll.setMinimumHeight(160)
+        scroll.verticalScrollBar().valueChanged.connect(
+            lambda: self._source_tooltip.hide()
+        )
 
         # Control buttons
         button_layout = QHBoxLayout()
+        button_layout.setContentsMargins(0, 2, 0, 2)
+        button_layout.setSpacing(6)
 
         refresh_btn = QPushButton("🔄 Refresh Sources")
         refresh_btn.clicked.connect(self.detect_sources)
@@ -833,7 +1171,7 @@ class MainWindow(QMainWindow):
 
         # Sources and current routes share a vertical splitter for better small-window behavior.
         routes_group = self.create_routes_tab()
-        routes_group.setMinimumHeight(180)
+        routes_group.setMinimumHeight(150)
 
         content_splitter = QSplitter(Qt.Orientation.Vertical)
         content_splitter.setChildrenCollapsible(False)
@@ -841,7 +1179,9 @@ class MainWindow(QMainWindow):
         content_splitter.addWidget(routes_group)
         content_splitter.setStretchFactor(0, 3)
         content_splitter.setStretchFactor(1, 2)
-        content_splitter.setSizes([420, 260])
+        content_splitter.setSizes([600, 300])
+        content_splitter.splitterMoved.connect(self._schedule_layout_save)
+        self._content_splitter = content_splitter
         layout.addWidget(content_splitter, 1)
 
         widget.setLayout(layout)
@@ -850,18 +1190,25 @@ class MainWindow(QMainWindow):
     def create_routes_tab(self) -> QWidget:
         """Create the current routes display section"""
         section = QGroupBox("Current Routes")
-        layout = QVBoxLayout(section)
-
-        intro = QLabel(
+        section.setToolTip(
             "Direct links from sources → Steam game recording input. "
-            "This table refreshes automatically (same interval as source detection in Settings)."
+            "Refreshes automatically at the source-detection interval."
         )
-        intro.setWordWrap(True)
-        layout.addWidget(intro)
+        layout = QVBoxLayout(section)
+        layout.setContentsMargins(6, 4, 6, 6)
+        layout.setSpacing(4)
 
+        header = QHBoxLayout()
         self.routes_status_label = QLabel("—")
         self.routes_status_label.setStyleSheet("font-size: 11px;")
-        layout.addWidget(self.routes_status_label)
+        header.addWidget(self.routes_status_label)
+        header.addStretch()
+
+        refresh_routes_btn = QPushButton("Refresh now")
+        refresh_routes_btn.setToolTip("Routes also update on the polling timer.")
+        refresh_routes_btn.clicked.connect(self.update_current_routes)
+        header.addWidget(refresh_routes_btn)
+        layout.addLayout(header)
 
         self.routes_table = QTableWidget(0, 4)
         self.routes_table.setHorizontalHeaderLabels(
@@ -878,16 +1225,11 @@ class MainWindow(QMainWindow):
         self.routes_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.routes_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.routes_table.setAlternatingRowColors(True)
-        self.routes_table.setMinimumHeight(180)
+        self.routes_table.setMinimumHeight(140)
         self.routes_table.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
         layout.addWidget(self.routes_table)
-
-        refresh_routes_btn = QPushButton("Refresh now")
-        refresh_routes_btn.setToolTip("Routes also update on the polling timer.")
-        refresh_routes_btn.clicked.connect(self.update_current_routes)
-        layout.addWidget(refresh_routes_btn)
 
         return section
 
@@ -1173,6 +1515,10 @@ class MainWindow(QMainWindow):
             
             # Update selected sources
             self.selected_sources = set(sources_to_select)
+            # An explicit profile load overrides sticky exclusions for its sources.
+            for name in sources_to_select:
+                self.temporary_exclusions.discard(name)
+                self.config.remove_excluded_source(name)
             logger.info(f"Profile loaded: {profile_name}")
             logger.debug(f"Selected sources: {self.selected_sources}")
             
@@ -1317,11 +1663,13 @@ class MainWindow(QMainWindow):
             self.sources = current_sources
             
             # Check for new game sources
-            excluded_games = self.config.get_excluded_games()
+            excluded_sources = (
+                set(self.config.get_excluded_sources()) | self.temporary_exclusions
+            )
             auto_apply_enabled = self.settings.get('auto_apply_games', True)
             
             current_games = {s['name'] for s in current_sources if s['type'] == 'Game'}
-            new_games = current_games - self.previously_detected_games - set(excluded_games)
+            new_games = current_games - self.previously_detected_games - excluded_sources
             
             if new_games and auto_apply_enabled:
                 logger.info(f"New game(s) detected: {new_games}")
@@ -1418,6 +1766,9 @@ class MainWindow(QMainWindow):
         import logging
         import time
         logger = logging.getLogger(__name__)
+
+        # Persist layout even when this close only minimizes to the tray.
+        self._save_window_geometry()
         
         # Check if we should minimize to tray instead of closing
         minimize_to_tray = self.settings.get('minimize_to_tray', True)
@@ -1542,7 +1893,10 @@ class MainWindow(QMainWindow):
             if self.settings.get('auto_apply_games', True):
                 self.pipewire._update_steam_node()
                 if self.pipewire.steam_node_id and self.selected_sources:
-                    excluded = self.config.get_excluded_games()
+                    excluded = (
+                        set(self.config.get_excluded_sources())
+                        | self.temporary_exclusions
+                    )
                     startup_games = {
                         s['name']
                         for s in sources
@@ -1560,7 +1914,14 @@ class MainWindow(QMainWindow):
         self.status_label.setStyleSheet("font-size: 11px;")
 
     def update_sources_list(self):
-        """Update the UI with detected sources - optimized for speed"""
+        """Update the UI with detected sources - optimized for speed."""
+        self._updating_sources_ui = True
+        try:
+            self._update_sources_list()
+        finally:
+            self._updating_sources_ui = False
+
+    def _update_sources_list(self):
         import logging
         logger = logging.getLogger(__name__)
         
@@ -1574,14 +1935,22 @@ class MainWindow(QMainWindow):
                 item.widget().deleteLater()
 
         if not self.sources:
+            # No sources at all: temporary exclusions have nothing left to hold
+            # on to, so clear them (a rediscovered process should auto-route).
+            self.temporary_exclusions.clear()
             no_sources_label = QLabel("No audio sources detected")
             no_sources_label.setStyleSheet("")
             self.sources_layout.addWidget(no_sources_label)
             self.sources_group.blockSignals(False)
             return
 
-        # Get excluded games from config
-        excluded_games = self.config.get_excluded_games()
+        # Temporary exclusions live only as long as the source is visible.
+        current_names = {s['name'] for s in self.sources}
+        self.temporary_exclusions &= current_names
+
+        # Get exclusions from config + this session
+        permanent_exclusions = set(self.config.get_excluded_sources())
+        excluded_sources = permanent_exclusions | self.temporary_exclusions
         
         # Add checkboxes for each source, grouped by type
         type_groups = {}
@@ -1591,40 +1960,64 @@ class MainWindow(QMainWindow):
                 type_groups[source_type] = []
             type_groups[source_type].append(source)
 
-        # Display sources grouped by type
+        # Display sources with compact type headers instead of nested group boxes.
         for source_type in sorted(type_groups.keys()):
-            group_box = QGroupBox(f"{source_type} Sources")
-            group_layout = QVBoxLayout()
-            
+            header = QLabel(f"<b>{source_type} sources</b>")
+            header.setStyleSheet("margin-top: 6px;")
+            self.sources_layout.addWidget(header)
+
             for source in type_groups[source_type]:
                 # Create horizontal layout for checkbox + best estimate label
                 row_layout = QHBoxLayout()
+                row_layout.setContentsMargins(4, 0, 4, 0)
+                row_layout.setSpacing(4)
                 
-                checkbox = QCheckBox(f"{source['name']}")
+                name = source['name']
+                status_text = ""
+                status_tip = ""
+                if name in permanent_exclusions:
+                    status_text = "excluded"
+                    status_tip = "Permanently excluded from auto-routing"
+                elif name in self.temporary_exclusions:
+                    status_text = "excluded (temp)"
+                    status_tip = "Excluded until this source/process is rediscovered"
+                checkbox = ElidedCheckBox(name)
                 app_name = source.get('app_name', 'Unknown')
                 
-                # Auto-check games (except excluded ones)
-                # Never auto-select System sources (output devices, Steam internal, etc.)
-                if source_type == 'Game' and source['name'] not in excluded_games:
+                # Set initial state without firing user-toggle handling.
+                checkbox.blockSignals(True)
+                if name in excluded_sources:
+                    checkbox.setChecked(False)
+                    self.selected_sources.discard(name)
+                elif source_type == 'Game':
+                    # Auto-select games unless the user opted this source out.
                     checkbox.setChecked(True)
-                    self.selected_sources.add(source['name'])
-                    logger.debug(f"Auto-selected game: {source['name']}")
+                    self.selected_sources.add(name)
+                    logger.debug(f"Auto-selected game: {name}")
                 elif source_type == 'System':
                     # System sources are never auto-selected - user must manually choose
                     checkbox.setChecked(False)
-                    if source['name'] in self.selected_sources:
-                        self.selected_sources.discard(source['name'])
+                    self.selected_sources.discard(name)
                 else:
-                    checkbox.setChecked(source['name'] in self.selected_sources)
+                    checkbox.setChecked(name in self.selected_sources)
+                checkbox.blockSignals(False)
                 
-                # Set tooltip with app name and exclusion hint
-                tooltip = f"App: {app_name}"
-                if source_type == 'System':
-                    tooltip += "\n⚠ System/output device - routing may cause audio loops or unexpected behavior"
-                elif source_type == 'Game':
-                    tooltip += "\nRight-click to exclude from auto-selection"
-                checkbox.setToolTip(tooltip)
-                
+                # Full name + exclusion + (for system sources) a collapsible
+                # warning are shown in the interactive hover popover instead of
+                # a native tooltip, so the warning can be expanded on click.
+                tooltip_data = {
+                    "name": name,
+                    "app_name": app_name,
+                    "status_text": status_text,
+                    "status_tip": status_tip,
+                    "is_system": source_type == 'System',
+                }
+                checkbox.setToolTip("")  # replaced by the interactive popover
+                checkbox.hovered.connect(
+                    lambda cb=checkbox, d=tooltip_data: self._schedule_tooltip(cb, d)
+                )
+                checkbox.unhovered.connect(self._cancel_tooltip)
+
                 # Connect state change handler
                 checkbox.stateChanged.connect(
                     lambda state, s=source: self.on_source_toggled(s, state)
@@ -1636,75 +2029,198 @@ class MainWindow(QMainWindow):
                     lambda pos, s=source, cb=checkbox: self.show_source_context_menu(s, cb, pos)
                 )
                 
-                row_layout.addWidget(checkbox)
+                row_layout.addWidget(checkbox, 1)
                 
                 # Add best estimate label if available (only for games)
                 stream_purpose = source.get('stream_purpose', '')
                 if stream_purpose and source_type == 'Game':
                     estimate_label = QLabel(f"(guess: {stream_purpose})")
-                    estimate_label.setStyleSheet("font-size: 10px; margin-left: 15px;")
+                    estimate_label.setStyleSheet("font-size: 10px;")
                     estimate_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
                     estimate_label.setToolTip("Estimated based on audio buffer size - may be incorrect")
-                    row_layout.addWidget(estimate_label)
+                    row_layout.addWidget(estimate_label, 0)
+
+                # Keep exclusion state right-aligned so eliding the name never hides it.
+                if status_text:
+                    status_label = QLabel(status_text)
+                    status_label.setStyleSheet("font-size: 10px; color: #d9534f;")
+                    status_label.setAlignment(
+                        Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+                    )
+                    status_label.setToolTip(status_tip)
+                    row_layout.addWidget(status_label, 0)
                 
-                group_layout.addLayout(row_layout)
-            
-            group_layout.addStretch()
-            group_box.setLayout(group_layout)
-            self.sources_layout.addWidget(group_box)
+                row_widget = QWidget()
+                row_widget.setLayout(row_layout)
+                self.sources_layout.addWidget(row_widget)
 
         self.sources_layout.addStretch()
         self.sources_group.blockSignals(False)
 
-    def show_source_context_menu(self, source, checkbox, pos):
-        """Show context menu for source exclusion"""
-        import logging
-        logger = logging.getLogger(__name__)
-        
-        from PyQt6.QtWidgets import QMenu
-        
-        excluded_games = self.config.get_excluded_games()
-        is_excluded = source['name'] in excluded_games
-        
-        menu = QMenu()
-        
-        if source['type'] == 'Game':
-            if is_excluded:
-                action = menu.addAction(f"Include {source['name']} in auto-select")
-                action.triggered.connect(
-                    lambda: self.toggle_game_exclusion(source['name'], exclude=False)
-                )
-            else:
-                action = menu.addAction(f"✗ Exclude {source['name']} from auto-select")
-                action.triggered.connect(
-                    lambda: self.toggle_game_exclusion(source['name'], exclude=True)
-                )
-            
-            menu.popup(checkbox.mapToGlobal(pos))
+    # --- Interactive hover popover for source rows -------------------------
 
-    def toggle_game_exclusion(self, game_name: str, exclude: bool):
-        """Toggle game exclusion and update UI"""
+    def _schedule_tooltip(self, widget, data):
+        """Show the source popover shortly after the mouse enters a row."""
+        self._tooltip_anchor = widget
+        self._tooltip_data = data
+        self._tooltip_hide_timer.stop()
+        self._tooltip_show_timer.start(350)
+
+    def _cancel_tooltip(self):
+        """Mouse left a row; hide the popover unless it moved onto the popover."""
+        self._tooltip_show_timer.stop()
+        self._schedule_tooltip_hide()
+
+    def _schedule_tooltip_hide(self):
+        self._tooltip_hide_timer.start(250)
+
+    def _cancel_tooltip_hide(self):
+        self._tooltip_hide_timer.stop()
+
+    def _show_pending_tooltip(self):
+        if self._tooltip_anchor is None or self._tooltip_data is None:
+            return
+        if not self._tooltip_anchor.isVisible() or not self._tooltip_anchor.underMouse():
+            return
+        self._source_tooltip.show_for(
+            self._tooltip_data, self._tooltip_anchor, self
+        )
+
+    def _maybe_hide_tooltip(self):
+        tip = self._source_tooltip
+        if tip.isVisible() and (
+            tip.underMouse()
+            or (self._tooltip_anchor is not None and self._tooltip_anchor.underMouse())
+        ):
+            return
+        tip.hide()
+
+    def _position_tooltip_for(self, tip, anchor):
+        """Move the popover (child of this window) just below the anchor,
+        clamped to stay inside the main window."""
+        global_pos = anchor.mapToGlobal(anchor.rect().bottomLeft())
+        local = self.mapFromGlobal(global_pos)
+        x = local.x()
+        y = local.y() + 4
+        mw_rect = self.rect()
+        if x + tip.width() > mw_rect.width():
+            x = max(0, mw_rect.width() - tip.width())
+        if y + tip.height() > mw_rect.height():
+            above = (
+                self.mapFromGlobal(anchor.mapToGlobal(anchor.rect().topLeft())).y()
+                - tip.height()
+                - 4
+            )
+            y = above if above >= 0 else max(0, mw_rect.height() - tip.height())
+        tip.move(max(0, x), max(0, y))
+
+    def _reposition_tooltip(self):
+        if self._tooltip_anchor is not None and self._source_tooltip.isVisible():
+            self._position_tooltip_for(self._source_tooltip, self._tooltip_anchor)
+
+    def show_source_context_menu(self, source, checkbox, pos):
+        """Show context menu for source exclusions."""
+        from PyQt6.QtWidgets import QMenu
+
+        self._source_tooltip.hide()
+        name = source['name']
+        permanent = name in self.config.get_excluded_sources()
+        temporary = name in self.temporary_exclusions
+
+        menu = QMenu()
+        if permanent or temporary:
+            action = menu.addAction(f"Include «{name}» in auto-select")
+            action.triggered.connect(lambda: self._include_source(source))
+        else:
+            permanent_action = menu.addAction(f"Exclude «{name}» permanently")
+            permanent_action.triggered.connect(
+                lambda: self._exclude_source(source, "permanent")
+            )
+            temporary_action = menu.addAction(f"Exclude «{name}» until rediscovered")
+            temporary_action.triggered.connect(
+                lambda: self._exclude_source(source, "temporary")
+            )
+
+        # exec() (not popup()) keeps the menu alive; a local QMenu passed to
+        # popup() is garbage-collected immediately in PyQt6 and never shows.
+        menu.exec(checkbox.mapToGlobal(pos))
+
+    def _clear_source_exclusion(self, source) -> None:
+        """Remove both permanent and temporary exclusions for a source."""
+        name = source['name']
+        self.temporary_exclusions.discard(name)
+        self.config.remove_excluded_source(name)
+        self.selected_sources.add(name)
+
+    def _include_source(self, source) -> None:
+        """Context-menu action: undo an exclusion and refresh the list."""
+        self._clear_source_exclusion(source)
+        self.update_sources_list()
+
+    def _remove_source_routes(self, source) -> None:
+        """Disconnect a source from Steam immediately when it is excluded."""
         import logging
         logger = logging.getLogger(__name__)
-        
-        if exclude:
-            self.config.add_excluded_game(game_name)
-            self.selected_sources.discard(game_name)
-            logger.info(f"Excluded game from auto-select: {game_name}")
+        try:
+            self.pipewire._update_steam_node()
+            if not self.pipewire.steam_node_id:
+                return
+            ok, message = self.pipewire.disconnect_source_from_steam(source['id'])
+            logger.info(f"Unroute «{source['name']}»: {message}")
+            if ok and message != "Source is not connected to Steam":
+                self.route_check_timer = QTimer()
+                self.route_check_timer.setSingleShot(True)
+                self.route_check_timer.timeout.connect(self.update_current_routes)
+                self.route_check_timer.start(300)
+        except Exception as e:
+            logger.error(f"Failed to disconnect «{source.get('name')}» from Steam: {e}")
+
+    def _exclude_source(self, source, mode: str = "permanent") -> None:
+        """Stickily exclude a source and disconnect it from Steam right away.
+
+        ``mode='permanent'`` persists in settings. ``mode='temporary'`` lasts
+        until the source disappears from detection, so a rediscovered process
+        is auto-routed again.
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+
+        name = source['name']
+        mode = (mode or "permanent").lower()
+        if mode == "temporary":
+            self.temporary_exclusions.add(name)
         else:
-            self.config.remove_excluded_game(game_name)
-            self.selected_sources.add(game_name)
-            logger.info(f"Included game in auto-select: {game_name}")
-        
-        # Refresh UI to reflect changes
+            self.config.add_excluded_source(name)
+            self.temporary_exclusions.discard(name)
+
+        self.selected_sources.discard(name)
+        self._remove_source_routes(source)
+
+        label = "until rediscovered" if mode == "temporary" else "permanently"
+        self.status_label.setText(f"Excluded «{name}» {label}")
+        self.status_label.setStyleSheet("font-size: 11px;")
+        logger.info(f"Excluded source «{name}» ({mode})")
+
+        # Refresh labels/tooltips and make sure the checkbox stays unchecked.
         self.update_sources_list()
 
     def on_source_toggled(self, source, state):
-        """Handle source selection change"""
-        if state == Qt.CheckState.Checked:
-            self.selected_sources.add(source['name'])
+        """Handle a user (not programmatic) source checkbox change."""
+        if self._updating_sources_ui:
+            return
+        self._source_tooltip.hide()
+
+        if state == Qt.CheckState.Checked.value:
+            self._clear_source_exclusion(source)
+            self.update_sources_list()
+            self.status_label.setText(
+                f"Included «{source['name']}» — press Apply Routing to connect"
+            )
+            self.status_label.setStyleSheet("font-size: 11px;")
         else:
-            self.selected_sources.discard(source['name'])
+            # Plain uncheck = temporary exclusion. Permanent exclusion is an
+            # explicit right-click action.
+            self._exclude_source(source, "temporary")
 
     @staticmethod
     def _source_pid(source):
@@ -1878,9 +2394,10 @@ class MainWindow(QMainWindow):
         self.routes_table.setUpdatesEnabled(False)
         self.routes_table.setRowCount(len(routes))
         for row, route in enumerate(routes):
-            self.routes_table.setItem(
-                row, 0, QTableWidgetItem(str(route.get("source_name", "")))
-            )
+            source_name = str(route.get("source_name", ""))
+            source_item = QTableWidgetItem(source_name)
+            source_item.setToolTip(source_name)
+            self.routes_table.setItem(row, 0, source_item)
             self.routes_table.setItem(
                 row, 1, QTableWidgetItem(str(route.get("source_node_id", "")))
             )
@@ -1958,7 +2475,7 @@ class MainWindow(QMainWindow):
         self.info_note.setText(info_text)
     
     def _update_routing_instructions(self):
-        """Update routing instructions text based on auto-apply setting"""
+        """Update the compact routing hint and its detailed tooltip."""
         auto_apply = self.settings.get('auto_apply_games', True)
         focus_mode = (self.settings.get('multi_game_mode', 'all') or 'all').lower() == 'single'
         focus_line = (
@@ -1966,22 +2483,32 @@ class MainWindow(QMainWindow):
             if focus_mode
             else "🎯 <b>Multi-game mode:</b> All selected games are routed."
         )
-        
+
+        auto_label = "Auto-apply ON" if auto_apply else "Auto-apply OFF"
+        mode_label = "Focus mode" if focus_mode else "All selected games"
+        compact = (
+            f"Select sources to capture in Steam recording. "
+            f"<b>{auto_label}</b> · {mode_label}"
+        )
+        if not auto_apply:
+            compact += " — use <b>Apply Routing</b>"
+
         if auto_apply:
-            text = (
+            detail = (
                 "Select audio sources you want to include in Steam recording.\n"
                 "Only selected sources will be captured by Steam's game recording feature.\n\n"
-                "🔄 <b>Auto-apply is ENABLED</b> - New games will be automatically routed to Steam.\n"
-                "You can manually click '<b>Apply Routing</b>' to update connections at any time.\n"
+                "🔄 Auto-apply is ENABLED - new games are automatically routed to Steam.\n"
+                "You can click 'Apply Routing' to update connections at any time.\n"
                 f"{focus_line}"
             )
         else:
-            text = (
+            detail = (
                 "Select audio sources you want to include in Steam recording.\n"
                 "Only selected sources will be captured by Steam's game recording feature.\n\n"
-                "💡 <b>Auto-apply is DISABLED</b> - New games are detected and selected, but NOT connected.\n"
-                "You must click '<b>Apply Routing</b>' button below to activate the connections.\n"
+                "💡 Auto-apply is DISABLED - new games are detected and selected, but NOT connected.\n"
+                "Click 'Apply Routing' to activate the connections.\n"
                 f"{focus_line}"
             )
-        
-        self.routing_instructions.setText(text)
+
+        self.routing_instructions.setText(compact)
+        self.routing_instructions.setToolTip(detail)
