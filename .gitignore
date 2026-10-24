@@ -89,18 +89,3 @@ docs/_build/
 *.bak
 *.orig
 .*.swp
-
-# AI/agent tooling (local only)
-.cursor/
-.cursorrules
-.codex/
-.opencode/
-.continue/
-.windsurf/
-.aider*
-AGENTS.md
-COPILOT.md
-GEMINI.md
-.github/copilot-instructions.md
-.github/agents/
-.github/instructions/
