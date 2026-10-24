@@ -103,3 +103,4 @@ modules:
       - type: git
         url: https://github.com/crashman79/steam-audio-isolator.git
         tag: v0.4.0
+        commit: ee48274469be55a7533710cca165a0f2d3ba2477
