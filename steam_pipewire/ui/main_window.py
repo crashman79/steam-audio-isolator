@@ -430,11 +430,13 @@ class SettingsDialog(QWidget):
         self.start_at_login_checkbox.stateChanged.connect(self._on_settings_changed)
         tray_layout.addWidget(self.start_at_login_checkbox)
         if self.config.is_flatpak():
-            tray_layout.addWidget(QLabel(
+            flatpak_hint = QLabel(
                 "Flatpak: Save opens your desktop’s standard permission dialog (xdg-desktop-portal "
                 "Background). Use this on KDE, GNOME, and other portal-enabled setups instead of a file "
                 "inside the sandbox."
-            ))
+            )
+            flatpak_hint.setWordWrap(True)
+            tray_layout.addWidget(flatpak_hint)
         else:
             tray_layout.addWidget(QLabel(
                 "When enabled, creates ~/.config/autostart/steam-audio-isolator.desktop. Click Save to apply."
@@ -634,6 +636,8 @@ class MainWindow(QMainWindow):
         self._startup_auto_apply_done = False  # One-shot apply when games exist on first scan
         self.routes_poll_timer = None
         self.route_update_thread = None
+        self._routes_snapshot = None
+        self._routes_manual_refresh = False
         self._content_splitter = None
         self._layout_save_timer = QTimer(self)
         self._layout_save_timer.setSingleShot(True)
@@ -819,6 +823,7 @@ class MainWindow(QMainWindow):
         
         self.info_note = QLabel(info_text)
         self.info_note.setStyleSheet("font-size: 10px; padding: 5px;")
+        self.info_note.setWordWrap(True)
         self.info_note.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         header_layout.addWidget(self.info_note)
         
@@ -1192,7 +1197,7 @@ class MainWindow(QMainWindow):
         section = QGroupBox("Current Routes")
         section.setToolTip(
             "Direct links from sources → Steam game recording input. "
-            "Refreshes automatically at the source-detection interval."
+            "Checks automatically; the list only updates when routes change."
         )
         layout = QVBoxLayout(section)
         layout.setContentsMargins(6, 4, 6, 6)
@@ -1205,8 +1210,8 @@ class MainWindow(QMainWindow):
         header.addStretch()
 
         refresh_routes_btn = QPushButton("Refresh now")
-        refresh_routes_btn.setToolTip("Routes also update on the polling timer.")
-        refresh_routes_btn.clicked.connect(self.update_current_routes)
+        refresh_routes_btn.setToolTip("Routes also update automatically when they change.")
+        refresh_routes_btn.clicked.connect(lambda: self.update_current_routes(manual=True))
         header.addWidget(refresh_routes_btn)
         layout.addLayout(header)
 
@@ -2366,11 +2371,12 @@ class MainWindow(QMainWindow):
                     f"• Ensure Steam is running"
                 )
 
-    def update_current_routes(self):
+    def update_current_routes(self, manual=False):
         """Refresh routes in a worker thread (timer + manual)."""
         if self.route_update_thread and self.route_update_thread.isRunning():
             return
-        if hasattr(self, "routes_status_label"):
+        self._routes_manual_refresh = manual
+        if manual and hasattr(self, "routes_status_label"):
             self.routes_status_label.setText("Refreshing…")
 
         self.route_update_thread = RouteRefreshThread(self.pipewire)
@@ -2379,15 +2385,46 @@ class MainWindow(QMainWindow):
         self.route_update_thread.start()
 
     def on_routes_updated(self, routes):
-        """Handle updated routes"""
+        """Handle updated routes.
+
+        Background polling runs every few seconds. Rebuilding the table and
+        changing the status text on every poll makes the UI look like it is
+        constantly refreshing, so only touch the widgets when the route list
+        actually changed.
+        """
         from datetime import datetime
 
         ts = datetime.now().strftime("%H:%M:%S")
+        snapshot = tuple(
+            (
+                str(route.get("source_name", "")),
+                str(route.get("source_node_id", "")),
+                str(route.get("channel", "")),
+                str(route.get("link_id", "")),
+            )
+            for route in routes
+        )
+
+        if snapshot == self._routes_snapshot:
+            self.routes_status_label.setToolTip(f"Last checked at {ts}")
+            if self._routes_manual_refresh:
+                self._routes_manual_refresh = False
+                self.routes_status_label.setText(
+                    f"{len(routes)} link(s) to Steam recording"
+                    if routes
+                    else "No active routes to Steam recording."
+                )
+            return
+
+        self._routes_snapshot = snapshot
+        self._routes_manual_refresh = False
+
         if not routes:
             self.routes_table.setRowCount(0)
             self.routes_status_label.setText(
-                f"{ts} — No active routes to Steam recording."
+                "No active routes to Steam recording."
             )
+            self.routes_status_label.setToolTip(f"Last changed at {ts}")
             self.routes_status_label.setStyleSheet("font-size: 11px;")
             return
 
@@ -2409,12 +2446,18 @@ class MainWindow(QMainWindow):
             )
         self.routes_table.setUpdatesEnabled(True)
         self.routes_status_label.setText(
-            f"{ts} — {len(routes)} link(s) to Steam recording"
+            f"{len(routes)} link(s) to Steam recording"
         )
+        self.routes_status_label.setToolTip(f"Last changed at {ts}")
         self.routes_status_label.setStyleSheet("font-size: 11px;")
 
     def on_route_error(self, error):
         """Handle route update error"""
+        error_snapshot = ("error", str(error))
+        if error_snapshot == self._routes_snapshot:
+            return
+        self._routes_snapshot = error_snapshot
+        self._routes_manual_refresh = False
         self.routes_table.setRowCount(0)
         self.routes_status_label.setText(f"Error loading routes: {error}")
         self.routes_status_label.setStyleSheet("font-size: 11px;")
