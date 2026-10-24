@@ -53,6 +53,9 @@ modules:
       - -Dsystemd-system-service=disabled
       - -Dsystemd-user-service=disabled
       - -Dflatpak=enabled
+      # 25.08 installs to /app/lib64 by default, but the Flatpak loader only
+      # searches /app/lib. Keep the bundled client library discoverable.
+      - --libdir=lib
     sources:
       - type: archive
         url: https://gitlab.freedesktop.org/pipewire/pipewire/-/archive/1.6.10/pipewire-1.6.10.tar.bz2

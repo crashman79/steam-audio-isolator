@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-24
+
+### Fixed
+- Flatpak: install the bundled PipeWire 1.6.10 client library into `/app/lib` instead of `/app/lib64`, which the Flatpak loader does not search. `pw-dump` / `pw-cli` now use the bundled 1.6.10 library rather than the runtime's 1.4.9.
+
 ## [0.4.0] - 2026-10-23
 
 ### Added

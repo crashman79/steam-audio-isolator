@@ -70,6 +70,9 @@ modules:
       - -Dsystemd-system-service=disabled
       - -Dsystemd-user-service=disabled
       - -Dflatpak=enabled
+      # 25.08 installs to /app/lib64 by default, but the Flatpak loader only
+      # searches /app/lib. Keep the bundled client library discoverable.
+      - --libdir=lib
     sources:
       - type: archive
         url: https://gitlab.freedesktop.org/pipewire/pipewire/-/archive/1.6.10/pipewire-1.6.10.tar.bz2
@@ -102,5 +105,4 @@ modules:
       # commit when preparing the actual Flathub submission.
       - type: git
         url: https://github.com/crashman79/steam-audio-isolator.git
-        tag: v0.4.0
-        commit: ee48274469be55a7533710cca165a0f2d3ba2477
+        tag: v0.4.1
