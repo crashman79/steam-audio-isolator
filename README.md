@@ -362,6 +362,14 @@ Non-Flatpak builds use the normal XDG locations under `~/.config/` and
 
 ---
 
+## Development note
+
+Some code and documentation were developed with LLM-assisted tooling. The
+maintainer reviews, tests, and takes responsibility for every change. AI tools
+are not project contributors.
+
+---
+
 ## License
 
 MIT. All audio routing happens locally in your PipeWire session.
