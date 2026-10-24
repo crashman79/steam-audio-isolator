@@ -1,11 +1,11 @@
 # CI: .github/workflows/flatpak.yml and build-release.yml
-# Local: flatpak install flathub org.freedesktop.Platform//24.08 org.freedesktop.Sdk//24.08
+# Local: flatpak install flathub org.freedesktop.Platform//25.08 org.freedesktop.Sdk//25.08
 #        flatpak-builder --user --install --force-clean build-dir flatpak/io.github.crashman79.steam-audio-isolator.yml
 
 app-id: io.github.crashman79.steam-audio-isolator
 branch: stable
 runtime: org.freedesktop.Platform
-runtime-version: '24.08'
+runtime-version: '25.08'
 sdk: org.freedesktop.Sdk
 command: steam-audio-isolator
 
@@ -55,8 +55,8 @@ modules:
       - -Dflatpak=enabled
     sources:
       - type: archive
-        url: https://gitlab.freedesktop.org/pipewire/pipewire/-/archive/1.2.7/pipewire-1.2.7.tar.bz2
-        sha256: 3c00292f9a419610c9eeb6e45b958d460afb601ecc6894012574a3b9f118616a
+        url: https://gitlab.freedesktop.org/pipewire/pipewire/-/archive/1.6.10/pipewire-1.6.10.tar.bz2
+        sha256: e67763b75d6fa907ef9ff856cfdcaf7f8498baba858fa8951b0aff25be626765
     cleanup:
       - /include
       - /lib/pkgconfig
@@ -70,7 +70,7 @@ modules:
         - --share=network
     build-commands:
       - pip3 install --verbose --exists-action=i --no-build-isolation --prefix=${FLATPAK_DEST}
-          "PyQt5==5.15.11" "pydbus==0.6.0" "darkdetect==0.8.0"
+          "PyQt6==6.11.0" "darkdetect==0.8.0"
       - pip3 install --verbose --exists-action=i --no-build-isolation --prefix=${FLATPAK_DEST} --no-deps .
       - rm -f ${FLATPAK_DEST}/share/applications/steam-audio-isolator.desktop
       - install -Dpm644 flatpak/io.github.crashman79.steam-audio-isolator.desktop ${FLATPAK_DEST}/share/applications/io.github.crashman79.steam-audio-isolator.desktop

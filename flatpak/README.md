@@ -2,9 +2,9 @@
 
 Primary manifest: [`io.github.crashman79.steam-audio-isolator.yml`](io.github.crashman79.steam-audio-isolator.yml)
 
-- Bundles **PipeWire 1.2.7** (minimal build) so `pw-cli` / `pw-dump` work inside the sandbox.
+- Bundles **PipeWire 1.6.10** (minimal build) so `pw-cli` / `pw-dump` work inside the sandbox.
 - Mounts **host** `xdg-run/pipewire-0` so the app talks to your session PipeWire.
-- **PyQt5** and other Python deps install via `pip` during the Flatpak build (network enabled for that module only in the manifest).
+- **PyQt6** and other Python deps install via `pip` during the Flatpak build (network enabled for that module only in the manifest).
 
 ## GitHub Actions and Releases
 
@@ -13,7 +13,7 @@ Primary manifest: [`io.github.crashman79.steam-audio-isolator.yml`](io.github.cr
 | [`.github/workflows/flatpak.yml`](../.github/workflows/flatpak.yml) | `push` / `pull_request` to `main`, or manual | Workflow artifact **`flatpak-bundle`** (`steam-audio-isolator-x86_64.flatpak`) |
 | [`.github/workflows/build-release.yml`](../.github/workflows/build-release.yml) | Version tags `v*` or manual | Same `.flatpak` attached to the **GitHub Release** |
 
-Runners use **Ubuntu 24.04**, **flatpak-builder** ≥ 1.4, and the **appstream** package so AppStream compose matches Freedesktop SDK **24.08**.
+Runners use **Ubuntu 24.04**, **flatpak-builder** ≥ 1.4, and the **appstream** package so AppStream compose matches Freedesktop SDK **25.08**.
 
 ## Install from a GitHub Release
 
@@ -84,7 +84,7 @@ flatpak run io.github.crashman79.steam-audio-isolator
 
 Single-file bundle (no install into your user Flatpak): `./build.sh --bundle` → `steam-audio-isolator-x86_64.flatpak`
 
-Manual equivalent: install Freedesktop 24.08 Platform+Sdk from Flathub, then `flatpak-builder` as in `build.sh`.
+Manual equivalent: install Freedesktop 25.08 Platform+Sdk from Flathub, then `flatpak-builder` as in `build.sh`.
 
 ## Permissions (`finish-args`)
 
@@ -100,7 +100,7 @@ App data lives under the default Flatpak per-app XDG dirs (`~/.var/app/<app-id>/
 
 ## Optional: other layouts
 
-- **`flatpak/flathub/`** — Alternate KDE BaseApp + pinned-wheel layout (not used by this repo’s CI). Ignore unless you maintain a separate Flathub-style tree.
+- **`flatpak/flathub/`** — Alternate KDE 6.11 + PyQt6 BaseApp layout with pinned wheels (not used by this repo’s CI). Ignore unless you maintain a separate Flathub-style tree.
 - Broader publishing options: [Flatpak publishing](https://docs.flatpak.org/en/latest/publishing.html) (self-hosted repo, etc.).
 
 **Qt / X11 / Wayland:** the app does not force `QT_QPA_PLATFORM` under Flatpak (`FLATPAK_ID`); `finish-args` expose Wayland and `fallback-x11` so Qt follows the session.

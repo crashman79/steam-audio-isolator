@@ -7,14 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-23
+
 ### Added
 - Multi-game routing preference: choose between routing all selected games or a single focused game when multiple games are active. Focus mode supports an optional preferred game title and otherwise falls back to the newest active game process.
 
 ### Fixed
+- Game detection now resolves missing process metadata from the PipeWire **Client** object (`client.id`). Wine/Proton streams connect directly to libpipewire and often expose `application.process.binary`/`id` only on the client, not on the node; this restores game classification and PID/AppID lookups for those streams.
+- Wine/Proton streams that expose only `application.name` (no `application.process.binary`/PID), such as `One Million Coins.exe`, are now classified as games instead of applications, so game selection and auto-apply work.
+- Current Routes channel labels now use the port's real `audio.channel` (FL/FR) instead of port-ID parity; Wine output ports are both odd, which previously labelled both channels as "Right".
+- Audio sources and Steam destinations no longer disappear when the bundled PipeWire 1.2.7 client talks to a newer host daemon. `pw-dump` emits unkeyed param entries in that case (invalid JSON); parsing now repairs those entries instead of returning an empty graph.
+- Application log is now rotated (10 MB × 3 backups) instead of growing without bound.
 - Login autostart portal call no longer fails with portal argument type errors. The Flatpak `RequestBackground` call now uses typed `GLib.Variant` values so the portal receives the required `(sa{sv})` signature and `commandline` is sent as `as`.
 - Start minimized to tray now works when the desktop tray host is hidden or initializes late at session start; tray icon setup no longer bails out early, and startup/close minimize logic no longer depends on immediate tray visibility.
 
 ### Changed
+- Migrated the GUI from PyQt5 5.15 to **PyQt6 6.11** (scoped Qt enums, `QAction` moved to `QtGui`, `exec()`, stricter `QBrush` arguments, QtDBus portal calls).
+- Flatpak runtime updated from the end-of-life Freedesktop **24.08** to **25.08** (Python 3.13), and the bundled PipeWire client from **1.2.7** to **1.6.10** so it matches current host daemons.
+- Removed the unmaintained `pydbus`/PyGObject dependency. Login autostart now calls `org.freedesktop.portal.Background` directly over QtDBus with a properly typed `a{sv}` options map.
+- Flathub manifest moved to `org.kde.Platform`/`Sdk` **6.11** with `com.riverbankcomputing.PyQt.BaseApp` **6.11**; `python3-deps.yml` now only pins `darkdetect`.
+- Minimum Python raised to 3.10 (PyQt6 requirement); Pillow dev dependency updated.
 - Moved Current Routes from a standalone tab into a dedicated section on the Audio Routing tab, keeping the same auto-refresh and manual refresh behavior.
 - Audio Routing tab now uses a vertical splitter between Available Audio Sources and Current Routes so both sections stay usable on smaller window heights.
 

@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import List, Dict, Optional
 import time
 
+from .pw_json import loads_pw_dump
+
 logger = logging.getLogger(__name__)
 
 
@@ -92,7 +94,7 @@ class SourceDetector:
                 return []
 
             try:
-                data = json.loads(stdout)
+                data = loads_pw_dump(stdout)
                 logger.debug(f"Parsed JSON with {len(data)} objects")
             except json.JSONDecodeError as e:
                 logger.error(f"JSON parse error: {e}")
@@ -363,10 +365,35 @@ class SourceDetector:
         """Parse PipeWire nodes to extract audio sources"""
         sources = []
 
+        # Direct libpipewire clients (notably Wine/Proton streams) often expose
+        # process metadata on the Client object rather than on the Node. Build a
+        # lookup so nodes can inherit it below.
+        clients = {
+            obj.get('id'): obj.get('info', {}).get('props', {}) or {}
+            for obj in data
+            if obj.get('type') == 'PipeWire:Interface:Client'
+        }
+
         for node in data:
             if node.get('type') == 'PipeWire:Interface:Node':
                 info = node.get('info', {})
-                props = info.get('props', {})
+                props = dict(info.get('props', {}) or {})
+
+                client_id = props.get('client.id')
+                try:
+                    client_props = clients.get(int(client_id))
+                except (TypeError, ValueError):
+                    client_props = None
+                if client_props:
+                    for key in (
+                        'application.name',
+                        'application.process.binary',
+                        'application.process.id',
+                        'application.process.user',
+                        'application.language',
+                    ):
+                        if not props.get(key) and client_props.get(key):
+                            props[key] = client_props[key]
                 media_class = props.get('media.class', '')
 
                 # Look for stream outputs (like games, applications) and audio sinks
@@ -511,6 +538,11 @@ class SourceDetector:
         # Check for Steam game indicators (expanded detection)
         # 1. Wine/Proton executables
         if any(x in app_binary for x in ['wine', 'proton', '.exe']):
+            return 'Game'
+
+        # 1b. Wine/Proton streams sometimes expose only application.name/node.name
+        # (no application.process.binary); treat Windows executables as games.
+        if app_name.endswith(('.exe', '.x86_64', '.x86')) or node_name.endswith('.exe'):
             return 'Game'
         
         # 2. Steam runtime containers and launchers

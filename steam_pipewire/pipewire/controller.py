@@ -2,7 +2,6 @@
 """PipeWire control interface using pw-cli"""
 
 import subprocess
-import json
 import re
 import logging
 import os
@@ -10,6 +9,8 @@ import signal
 import threading
 from typing import List, Dict, Optional, Tuple
 from pathlib import Path
+
+from .pw_json import loads_pw_dump
 
 logger = logging.getLogger(__name__)
 
@@ -117,7 +118,7 @@ def _get_available_ports(node_id: int, direction: str = "out") -> List[int]:
             timeout=3
         )
         if result.returncode == 0:
-            data = json.loads(result.stdout)
+            data = loads_pw_dump(result.stdout)
             ports = []
             for item in data:
                 if item.get('type') == 'PipeWire:Interface:Port':
@@ -193,7 +194,7 @@ class PipeWireController:
                 timeout=3
             )
             if result.returncode == 0:
-                data = json.loads(result.stdout)
+                data = loads_pw_dump(result.stdout)
                 found = find_steam_recording_node_id(data)
                 if found is not None:
                     self.steam_node_id = found
@@ -255,8 +256,9 @@ class PipeWireController:
                     timeout=5
                 )
                 source_cache = {}
+                port_channels = {}
                 if result.returncode == 0:
-                    nodes = json.loads(result.stdout)
+                    nodes = loads_pw_dump(result.stdout)
                     source_cache_count = 0
                     for node in nodes:
                         if node.get('type') == 'PipeWire:Interface:Node':
@@ -279,7 +281,16 @@ class PipeWireController:
                                 'full_name': full_name
                             }
                             source_cache_count += 1
-                    logger.debug(f"  Cached {source_cache_count} nodes")
+                        elif node.get('type') == 'PipeWire:Interface:Port':
+                            props = node.get('info', {}).get('props', {})
+                            channel = props.get('audio.channel') or ''
+                            if not channel:
+                                port_name = props.get('port.name', '')
+                                if '_' in port_name:
+                                    channel = port_name.rsplit('_', 1)[-1]
+                            if channel:
+                                port_channels[node.get('id')] = channel
+                    logger.debug(f"  Cached {source_cache_count} nodes and {len(port_channels)} port channels")
                 else:
                     logger.warning(f"  pw-dump failed: {result.returncode}")
                     source_cache = {}
@@ -324,7 +335,7 @@ class PipeWireController:
                                          cached.get('application.name') or f"Node {output_node}"
                             if not source_name:
                                 source_name = f"Node {output_node}"
-                            channel = self._get_channel_label(output_port)
+                            channel = self._get_channel_label(output_port, port_channels)
                             logger.debug(f"    ✓ Found: Link {current_link}, Node {output_node} → Steam ({source_name}) [{channel}]")
                             routes.append({
                                 'link_id': current_link,
@@ -377,7 +388,7 @@ class PipeWireController:
                                  cached.get('application.name') or f"Node {output_node}"
                     if not source_name:
                         source_name = f"Node {output_node}"
-                    channel = self._get_channel_label(output_port)
+                    channel = self._get_channel_label(output_port, port_channels)
                     logger.debug(f"    ✓ Found (last): Link {current_link}, Node {output_node} → Steam ({source_name}) [{channel}]")
                     routes.append({
                         'link_id': current_link,
@@ -399,15 +410,31 @@ class PipeWireController:
 
         return routes
 
-    def _get_channel_label(self, port_id: int) -> str:
-        """Get human-readable channel label (Left/Right) from port ID"""
+    def _get_channel_label(self, port_id: int, port_channels: Optional[Dict[int, str]] = None) -> str:
+        """Get a human-readable channel label from the port's audio channel."""
         if port_id is None:
             return "Unknown"
-        # Even port IDs are typically left channel, odd are right
-        if port_id % 2 == 0:
-            return "Left"
-        else:
-            return "Right"
+
+        channel = (port_channels or {}).get(port_id, "").upper()
+        names = {
+            'FL': 'Left',
+            'FR': 'Right',
+            'MONO': 'Mono',
+            'FC': 'Center',
+            'LFE': 'LFE',
+            'RL': 'Rear Left',
+            'RR': 'Rear Right',
+            'SL': 'Side Left',
+            'SR': 'Side Right',
+        }
+        if channel in names:
+            return names[channel]
+        if channel:
+            return channel
+
+        # Fallback when the port exposes no channel metadata: even IDs are
+        # usually left, odd usually right.
+        return "Left" if port_id % 2 == 0 else "Right"
 
     def _get_node_info(self, node_id: int) -> Dict:
         """Get node properties"""
@@ -467,7 +494,7 @@ class PipeWireController:
                 try:
                     result = subprocess.run(['pw-dump'], capture_output=True, text=True, timeout=2)
                     if result.returncode == 0:
-                        data = json.loads(result.stdout)
+                        data = loads_pw_dump(result.stdout)
                         for node in data:
                             if node.get('id') == source_id:
                                 props = node.get('info', {}).get('props', {})
@@ -615,7 +642,7 @@ class PipeWireController:
             if result.returncode != 0:
                 return False, "Failed to query audio sink"
             
-            data = json.loads(result.stdout)
+            data = loads_pw_dump(result.stdout)
             
             # Collect all sinks and categorize them
             analog_sinks = []  # Analog stereo speakers (preferred)

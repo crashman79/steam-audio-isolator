@@ -1,4 +1,4 @@
-"""Qt platform environment — must run before any PyQt5 import."""
+"""Qt platform environment — must run before any PyQt6 import."""
 
 from __future__ import annotations
 

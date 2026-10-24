@@ -12,10 +12,11 @@ from typing import Callable, List, Optional
 
 logger = logging.getLogger(__name__)
 
-from PyQt5.QtCore import QObject, pyqtSlot
-from PyQt5.QtDBus import (
+from PyQt6.QtCore import QMetaType, QObject, QVariant, pyqtSlot
+from PyQt6.QtDBus import (
     QDBusConnection,
     QDBusInterface,
+    QDBusMessage,
 )
 
 
@@ -26,7 +27,7 @@ def portal_parent_window(widget) -> str:
         if wh is None:
             return ""
         # X11: helps some portal implementations parent the dialog
-        from PyQt5.QtWidgets import QApplication
+        from PyQt6.QtWidgets import QApplication
 
         if QApplication.platformName() == "xcb":
             return f"x11:{hex(int(wh.winId()))}"
@@ -43,22 +44,52 @@ def _flatpak_commandline(start_minimized: bool) -> List[str]:
     return cl
 
 
-def _portal_request_background(parent_window: str, options: dict) -> str:
-    """Call RequestBackground with a correctly typed a{sv} options map."""
-    from gi.repository import GLib
-    from pydbus import SessionBus
+def _string_list_variant(values: List[str]) -> QVariant:
+    """Wrap a string list so D-Bus sees ``as``, not ``av``.
 
-    typed_options = {
-        "handle_token": GLib.Variant("s", options["handle_token"]),
-        "reason": GLib.Variant("s", options["reason"]),
-        "autostart": GLib.Variant("b", options["autostart"]),
-        "commandline": GLib.Variant("as", options["commandline"]),
-    }
-    portal = SessionBus().get(
+    Qt maps a plain Python list inside an ``a{sv}`` map to a variant list
+    (``av``). The portal expects ``commandline`` to be ``as``, so pin the
+    variant type explicitly.
+    """
+    variant = QVariant(list(values))
+    try:
+        variant.convert(QMetaType(QMetaType.Type.QStringList.value))
+    except Exception:
+        logger.debug("Could not type Qt variant as QStringList", exc_info=True)
+    return variant
+
+
+def _portal_request_background(parent_window: str, options: dict) -> str:
+    """Call RequestBackground with a correctly typed a{sv} options map.
+
+    Uses QtDBus directly (no PyGObject/pydbus, which are not available in the
+    25.08 runtime).
+    """
+    bus = QDBusConnection.sessionBus()
+    if not bus.isConnected():
+        raise RuntimeError("session bus is not available")
+
+    iface = QDBusInterface(
         "org.freedesktop.portal.Desktop",
         "/org/freedesktop/portal/desktop",
+        "org.freedesktop.portal.Background",
+        bus,
     )
-    return str(portal.RequestBackground(parent_window, typed_options))
+    if not iface.isValid():
+        raise RuntimeError("org.freedesktop.portal.Background is not available")
+
+    typed_options = {
+        "handle_token": options["handle_token"],
+        "reason": options["reason"],
+        "autostart": options["autostart"],
+        "commandline": _string_list_variant(options["commandline"]),
+    }
+
+    reply = iface.call("RequestBackground", parent_window, typed_options)
+    if reply.type() == QDBusMessage.MessageType.Error:
+        raise RuntimeError(reply.errorMessage() or "RequestBackground failed")
+    args = reply.arguments()
+    return str(args[0]) if args else ""
 
 
 class PortalBackgroundRequest(QObject):

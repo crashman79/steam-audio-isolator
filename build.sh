@@ -84,11 +84,11 @@ fi
 
 if [ "$SKIP_RUNTIMES" -eq 0 ]; then
   flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-  FP_INSTALL=(flatpak install -y)
+  FP_INSTALL=(flatpak install --user -y)
   if [ -n "${GITHUB_ACTIONS:-}" ]; then
     FP_INSTALL+=(--noninteractive)
   fi
-  "${FP_INSTALL[@]}" flathub org.freedesktop.Platform//24.08 org.freedesktop.Sdk//24.08
+  "${FP_INSTALL[@]}" flathub org.freedesktop.Platform//25.08 org.freedesktop.Sdk//25.08
 fi
 
 if [ ! -f steam-audio-isolator-48.png ] || [ ! -f steam-audio-isolator-256.png ]; then

@@ -4,6 +4,14 @@ import re
 import sys
 import os
 
+INSTALL_NOTES = (
+    "## Installation\n\n"
+    "1. Download `steam-audio-isolator-x86_64.flatpak` from the release assets below.\n"
+    "2. Install it: `flatpak install --user ./steam-audio-isolator-x86_64.flatpak`\n"
+    "3. Run: `flatpak run io.github.crashman79.steam-audio-isolator`\n\n"
+    "Flatpak installs the Freedesktop 25.08 runtime automatically if needed.\n\n"
+)
+
 version = os.getenv('VERSION', '')
 if not version:
     print("Error: VERSION environment variable not set")
@@ -12,32 +20,24 @@ if not version:
 try:
     with open("CHANGELOG.md", "r") as f:
         content = f.read()
-    
+
     pattern = rf"## \[{re.escape(version)}\].*?(?=## \[|$)"
     match = re.search(pattern, content, re.DOTALL)
-    
+
     if match:
         changelog = match.group(0).strip()
         changelog = re.sub(r"^## \[.*?\]\s*-\s*.*?\n+", "", changelog)
-        
+
         # Write with header for release notes
         with open("release_changelog.txt", "w") as f:
-            f.write("## Installation\n\n")
-            f.write("1. Download `steam-audio-isolator-linux-x86_64.tar.gz`\n")
-            f.write("2. Extract: `tar -xzf steam-audio-isolator-linux-x86_64.tar.gz`\n")
-            f.write("3. Run: `chmod +x steam-audio-isolator && ./steam-audio-isolator`\n")
-            f.write("4. Use Settings in the app to add to application menu or launch at login.\n\n")
+            f.write(INSTALL_NOTES)
             f.write("## What's Changed\n\n")
             f.write(changelog)
         print(f"✓ Changelog extracted for v{version}")
     else:
         repo = os.getenv('GITHUB_REPOSITORY', 'crashman79/steam-audio-isolator')
         with open("release_changelog.txt", "w") as f:
-            f.write("## Installation\n\n")
-            f.write("1. Download `steam-audio-isolator-linux-x86_64.tar.gz`\n")
-            f.write("2. Extract: `tar -xzf steam-audio-isolator-linux-x86_64.tar.gz`\n")
-            f.write("3. Run: `chmod +x steam-audio-isolator && ./steam-audio-isolator`\n")
-            f.write("4. Use Settings in the app to add to application menu or launch at login.\n\n")
+            f.write(INSTALL_NOTES)
             f.write("## What's Changed\n\n")
             f.write(f"See [CHANGELOG.md](https://github.com/{repo}/blob/main/CHANGELOG.md) for details on v{version}")
         print(f"⚠ No changelog found for v{version}")

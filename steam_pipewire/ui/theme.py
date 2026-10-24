@@ -4,8 +4,8 @@
 import sys
 from enum import Enum
 from typing import Optional
-from PyQt5.QtWidgets import QApplication
-from PyQt5.QtGui import QColor, QPalette
+from PyQt6.QtWidgets import QApplication
+from PyQt6.QtGui import QColor, QPalette
 
 
 class Theme(Enum):
@@ -24,7 +24,7 @@ def _portal_color_scheme() -> Optional[int]:
     if not _is_linux():
         return None
     try:
-        from PyQt5.QtDBus import QDBusInterface, QDBusConnection, QDBusMessage
+        from PyQt6.QtDBus import QDBusInterface, QDBusConnection, QDBusMessage
 
         iface = QDBusInterface(
             "org.freedesktop.portal.Desktop",
@@ -35,7 +35,7 @@ def _portal_color_scheme() -> Optional[int]:
         if not iface.isValid():
             return None
         reply = iface.call("Read", "org.freedesktop.appearance", "color-scheme")
-        if reply.type() != QDBusMessage.ReplyMessage or not reply.arguments():
+        if reply.type() != QDBusMessage.MessageType.ReplyMessage or not reply.arguments():
             return None
         arg0 = reply.arguments()[0]
         if hasattr(arg0, "toUInt"):
@@ -59,7 +59,7 @@ def _portal_linux_explicit_theme() -> Optional[Theme]:
 def _theme_from_qt_window_palette(app: QApplication) -> Optional[Theme]:
     try:
         p = app.palette()
-        if p.color(QPalette.Window).lightness() < 128:
+        if p.color(QPalette.ColorRole.Window).lightness() < 128:
             return Theme.DARK
     except Exception:
         pass
@@ -160,19 +160,19 @@ class ThemeManager:
         palette = QPalette()
         colors = ThemeManager.DARK_PALETTE if theme == Theme.DARK else ThemeManager.LIGHT_PALETTE
         
-        palette.setColor(QPalette.Window, QColor(colors['bg_color']))
-        palette.setColor(QPalette.WindowText, QColor(colors['text_color']))
-        palette.setColor(QPalette.Base, QColor(colors['bg_color']))
-        palette.setColor(QPalette.AlternateBase, QColor(colors['alt_bg_color']))
-        palette.setColor(QPalette.ToolTipBase, QColor(colors['alt_bg_color']))
-        palette.setColor(QPalette.ToolTipText, QColor(colors['text_color']))
-        palette.setColor(QPalette.Text, QColor(colors['text_color']))
-        palette.setColor(QPalette.Button, QColor(colors['alt_bg_color']))
-        palette.setColor(QPalette.ButtonText, QColor(colors['text_color']))
-        palette.setColor(QPalette.BrightText, QColor(colors['text_color']))
-        palette.setColor(QPalette.Highlight, QColor(colors['selection_color']))
-        palette.setColor(QPalette.HighlightedText, QColor(colors['bg_color']))
-        palette.setColor(QPalette.Link, QColor(colors['selection_color']))
+        palette.setColor(QPalette.ColorRole.Window, QColor(colors['bg_color']))
+        palette.setColor(QPalette.ColorRole.WindowText, QColor(colors['text_color']))
+        palette.setColor(QPalette.ColorRole.Base, QColor(colors['bg_color']))
+        palette.setColor(QPalette.ColorRole.AlternateBase, QColor(colors['alt_bg_color']))
+        palette.setColor(QPalette.ColorRole.ToolTipBase, QColor(colors['alt_bg_color']))
+        palette.setColor(QPalette.ColorRole.ToolTipText, QColor(colors['text_color']))
+        palette.setColor(QPalette.ColorRole.Text, QColor(colors['text_color']))
+        palette.setColor(QPalette.ColorRole.Button, QColor(colors['alt_bg_color']))
+        palette.setColor(QPalette.ColorRole.ButtonText, QColor(colors['text_color']))
+        palette.setColor(QPalette.ColorRole.BrightText, QColor(colors['text_color']))
+        palette.setColor(QPalette.ColorRole.Highlight, QColor(colors['selection_color']))
+        palette.setColor(QPalette.ColorRole.HighlightedText, QColor(colors['bg_color']))
+        palette.setColor(QPalette.ColorRole.Link, QColor(colors['selection_color']))
         
         return palette
     

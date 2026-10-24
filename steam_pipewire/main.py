@@ -24,8 +24,9 @@ apply_qt_platform_environment()
 import logging
 import traceback
 import fcntl
-from PyQt5.QtWidgets import QApplication, QMessageBox
-from PyQt5.QtCore import QTimer
+from logging.handlers import RotatingFileHandler
+from PyQt6.QtWidgets import QApplication, QMessageBox
+from PyQt6.QtCore import QTimer
 from steam_pipewire.ui.main_window import MainWindow
 from steam_pipewire.ui.theme import ThemeManager, Theme
 from steam_pipewire.utils.config import ConfigManager, flatpak_app_id
@@ -36,7 +37,9 @@ log_file = app_cache_dir("steam-audio-isolator") / "steam-audio-isolator.log"
 log_file.parent.mkdir(parents=True, exist_ok=True)
 
 # File handler with DEBUG, console with INFO only
-file_handler = logging.FileHandler(log_file)
+file_handler = RotatingFileHandler(
+    log_file, maxBytes=10 * 1024 * 1024, backupCount=3
+)
 file_handler.setLevel(logging.DEBUG)
 console_handler = logging.StreamHandler(sys.stdout)
 console_handler.setLevel(logging.INFO)
@@ -160,7 +163,7 @@ def main():
         else:
             window.show()
         QTimer.singleShot(300, window.maybe_prompt_install_once)
-        sys.exit(app.exec_())
+        sys.exit(app.exec())
     except Exception as e:
         logger.critical(f"Startup failed: {e}", exc_info=True)
         try:

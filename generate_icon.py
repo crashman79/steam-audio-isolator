@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate the Steam Audio Isolator icon as a PNG file.
    Icon: direct path from source to record target (isolated route).
-   Uses Pillow only (no PyQt5). Run: pip install Pillow && python generate_icon.py"""
+   Uses Pillow only (no Qt/PyQt). Run: pip install Pillow && python generate_icon.py"""
 
 from PIL import Image, ImageDraw
 

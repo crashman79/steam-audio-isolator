@@ -91,7 +91,7 @@ Steam Audio Isolator creates direct audio connections from your game to Steam Ga
 ## Installation
 
 ### Flatpak (recommended)
-Stable Freedesktop **24.08** runtime; `pw-cli` / `pw-dump` are bundled in the app. **Install from [GitHub Releases](https://github.com/crashman79/steam-audio-isolator/releases):** download **`steam-audio-isolator-x86_64.flatpak`**, then:
+Stable Freedesktop **25.08** runtime; **PipeWire 1.6.10** (`pw-cli` / `pw-dump`) is bundled in the app. **Install from [GitHub Releases](https://github.com/crashman79/steam-audio-isolator/releases):** download **`steam-audio-isolator-x86_64.flatpak`**, then:
 
 ```bash
 flatpak install --user ./steam-audio-isolator-x86_64.flatpak
@@ -99,7 +99,7 @@ flatpak run io.github.crashman79.steam-audio-isolator
 ```
 For a newer version, install the new `.flatpak` from the latest release (or uninstall the old ref first if the installer prompts).
 
-**Build and install locally from this repo** (installs Freedesktop 24.08 runtime/SDK from Flathub if needed):
+**Build and install locally from this repo** (installs Freedesktop 25.08 runtime/SDK from Flathub if needed):
 
 ```bash
 chmod +x build.sh
@@ -307,7 +307,7 @@ steam_pipewire/
 ├── main.py                 # Application entry point
 ├── ui/
 │   ├── __init__.py
-│   └── main_window.py      # PyQt5 GUI with 6 tabs + routes diagram
+│   └── main_window.py      # PyQt6 GUI with 5 tabs + routes diagram
 ├── pipewire/
 │   ├── __init__.py
 │   ├── source_detector.py  # PipeWire node detection & categorization

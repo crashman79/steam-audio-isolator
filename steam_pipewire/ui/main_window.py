@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 """Main application window for Steam Audio Isolator"""
 
-from PyQt5.QtWidgets import (
+from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QCheckBox, QScrollArea, QGroupBox,
     QFileDialog, QMessageBox, QComboBox, QListWidget, QListWidgetItem,
-    QTabWidget, QTextEdit, QSpinBox, QLineEdit, QSystemTrayIcon, QMenu, QAction,
+    QTabWidget, QTextEdit, QSpinBox, QLineEdit, QSystemTrayIcon, QMenu,
     QApplication, QSizePolicy, QTableWidget, QTableWidgetItem, QHeaderView,
-    QSplitter,
+    QSplitter, QAbstractItemView,
 )
-from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
-from PyQt5.QtGui import (
-    QColor, QFont, QKeySequence, QIcon, QPixmap, QPainter, QPen, QBrush, QPainterPath,
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
+from PyQt6.QtGui import (
+    QAction, QColor, QFont, QKeySequence, QIcon, QPixmap, QPainter, QPen, QBrush, QPainterPath,
     QGuiApplication, QCursor,
 )
 from pathlib import Path
@@ -496,7 +496,7 @@ class MainWindow(QMainWindow):
         
         self.info_note = QLabel(info_text)
         self.info_note.setStyleSheet("font-size: 10px; padding: 5px;")
-        self.info_note.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.info_note.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         header_layout.addWidget(self.info_note)
         
         main_layout.addLayout(header_layout)
@@ -595,7 +595,7 @@ class MainWindow(QMainWindow):
         self.tray_icon.showMessage(
             "Steam Audio Isolator",
             "Running in the system tray. Click the tray icon to open, or right-click for menu.",
-            QSystemTrayIcon.Information,
+            QSystemTrayIcon.MessageIcon.Information,
             4000
         )
 
@@ -643,7 +643,7 @@ class MainWindow(QMainWindow):
             self.tray_icon.showMessage(
                 "Steam Audio Isolator",
                 body[:512],
-                QSystemTrayIcon.Information if success else QSystemTrayIcon.Warning,
+                QSystemTrayIcon.MessageIcon.Information if success else QSystemTrayIcon.MessageIcon.Warning,
                 6000 if len(body) > 120 else 4500,
             )
         self.status_label.setText(status)
@@ -655,13 +655,13 @@ class MainWindow(QMainWindow):
     
     def create_app_icon(self, size=64):
         """Create app icon: rounded square with source -> direct path -> target (distinct from Steam/generic audio)."""
-        from PyQt5.QtGui import QLinearGradient, QPen, QBrush, QPolygon, QPainterPath
-        from PyQt5.QtCore import QPoint, QRectF
+        from PyQt6.QtGui import QLinearGradient, QPen, QBrush, QPolygon, QPainterPath
+        from PyQt6.QtCore import QPoint, QRectF
         scale = size / 64.0
         pixmap = QPixmap(size, size)
-        pixmap.fill(Qt.transparent)
+        pixmap.fill(Qt.GlobalColor.transparent)
         painter = QPainter(pixmap)
-        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         margin = 4 * scale
         rect = QRectF(margin, margin, size - 2 * margin, size - 2 * margin)
@@ -687,7 +687,7 @@ class MainWindow(QMainWindow):
         path = QPainterPath()
         path.moveTo(sx + 14 * scale, sy + 12 * scale)
         path.cubicTo(size * 0.5, size * 0.35, size * 0.65, size * 0.25, size - 14 * scale, 14 * scale)
-        painter.setBrush(Qt.NoBrush)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.setPen(QPen(QColor(255, 255, 255), max(2, int(3 * scale))))
         painter.drawPath(path)
 
@@ -724,7 +724,7 @@ class MainWindow(QMainWindow):
 
     def tray_icon_activated(self, reason):
         """Handle tray icon activation"""
-        if reason == QSystemTrayIcon.Trigger:
+        if reason == QSystemTrayIcon.ActivationReason.Trigger:
             self.toggle_visibility()
     
     def show_from_tray(self):
@@ -773,11 +773,11 @@ class MainWindow(QMainWindow):
             self,
             "Install to ~/.local/bin?",
             "Install Steam Audio Isolator to ~/.local/bin for easy access and reliable application menu/autostart?",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
         )
         self.config.set_setting('install_prompt_shown', True)
-        if reply == QMessageBox.Yes:
+        if reply == QMessageBox.StandardButton.Yes:
             ok, msg = self.config.install_to_local_bin()
             if ok:
                 QMessageBox.information(
@@ -795,7 +795,7 @@ class MainWindow(QMainWindow):
 
         # Instructions (dynamic based on auto-apply setting)
         self.routing_instructions = QLabel()
-        self.routing_instructions.setTextFormat(Qt.RichText)
+        self.routing_instructions.setTextFormat(Qt.TextFormat.RichText)
         self.routing_instructions.setWordWrap(True)
         # Keep layout styling but let colors come from the platform theme.
         self.routing_instructions.setStyleSheet("padding: 8px; border-left: 4px solid #ffc107; border-radius: 3px;")
@@ -835,7 +835,7 @@ class MainWindow(QMainWindow):
         routes_group = self.create_routes_tab()
         routes_group.setMinimumHeight(180)
 
-        content_splitter = QSplitter(Qt.Vertical)
+        content_splitter = QSplitter(Qt.Orientation.Vertical)
         content_splitter.setChildrenCollapsible(False)
         content_splitter.addWidget(scroll)
         content_splitter.addWidget(routes_group)
@@ -868,19 +868,19 @@ class MainWindow(QMainWindow):
             ["Source", "Node ID", "Channel", "Link ID"]
         )
         self.routes_table.horizontalHeader().setSectionResizeMode(
-            0, QHeaderView.Stretch
+            0, QHeaderView.ResizeMode.Stretch
         )
         for col in (1, 2, 3):
             self.routes_table.horizontalHeader().setSectionResizeMode(
-                col, QHeaderView.ResizeToContents
+                col, QHeaderView.ResizeMode.ResizeToContents
             )
         self.routes_table.verticalHeader().setVisible(False)
-        self.routes_table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.routes_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.routes_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.routes_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.routes_table.setAlternatingRowColors(True)
         self.routes_table.setMinimumHeight(180)
         self.routes_table.setSizePolicy(
-            QSizePolicy.Expanding, QSizePolicy.Expanding
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
         layout.addWidget(self.routes_table)
 
@@ -975,12 +975,12 @@ class MainWindow(QMainWindow):
         title_font.setPointSize(18)
         title_font.setBold(True)
         title.setFont(title_font)
-        title.setAlignment(Qt.AlignCenter)
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title)
         
         # Subtitle
         subtitle = QLabel("Isolate game audio for clean Steam game recording")
-        subtitle.setAlignment(Qt.AlignCenter)
+        subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
         subtitle.setStyleSheet("font-size: 12px; margin-bottom: 10px;")
         layout.addWidget(subtitle)
         
@@ -1112,7 +1112,7 @@ class MainWindow(QMainWindow):
             "</p>"
         )
         description.setWordWrap(True)
-        description.setTextFormat(Qt.RichText)
+        description.setTextFormat(Qt.TextFormat.RichText)
         description.setOpenExternalLinks(True)
         
         scroll = QScrollArea()
@@ -1202,10 +1202,10 @@ class MainWindow(QMainWindow):
         reply = QMessageBox.question(
             self, "Confirm Delete",
             f"Are you sure you want to delete profile '{profile_name}'?",
-            QMessageBox.Yes | QMessageBox.No
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         
-        if reply == QMessageBox.Yes:
+        if reply == QMessageBox.StandardButton.Yes:
             try:
                 self.config.delete_profile(profile_name)
                 logger.info(f"Profile deleted: {profile_name}")
@@ -1226,7 +1226,7 @@ class MainWindow(QMainWindow):
                 self.profiles_list.addItem(item)
         else:
             item = QListWidgetItem("No profiles saved yet")
-            item.setForeground(QColor("gray"))
+            item.setForeground(QBrush(QColor("gray")))
             self.profiles_list.addItem(item)
 
     def detect_sources(self):
@@ -1435,7 +1435,7 @@ class MainWindow(QMainWindow):
                 self.tray_icon.showMessage(
                     "Steam Audio Isolator",
                     f"Minimized to system tray.\n{restore_msg}\nClick tray icon to open; right-click to quit.",
-                    QSystemTrayIcon.Information,
+                    QSystemTrayIcon.MessageIcon.Information,
                     4000
                 )
             return
@@ -1459,11 +1459,11 @@ class MainWindow(QMainWindow):
             reply = QMessageBox.question(
                 self, "Confirm Close",
                 message,
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.No
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
             )
             
-            if reply == QMessageBox.No:
+            if reply == QMessageBox.StandardButton.No:
                 self.is_closing = False  # Reset flag
                 event.ignore()
                 return
@@ -1631,7 +1631,7 @@ class MainWindow(QMainWindow):
                 )
                 
                 # Add context menu for exclusion
-                checkbox.setContextMenuPolicy(Qt.CustomContextMenu)
+                checkbox.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
                 checkbox.customContextMenuRequested.connect(
                     lambda pos, s=source, cb=checkbox: self.show_source_context_menu(s, cb, pos)
                 )
@@ -1643,7 +1643,7 @@ class MainWindow(QMainWindow):
                 if stream_purpose and source_type == 'Game':
                     estimate_label = QLabel(f"(guess: {stream_purpose})")
                     estimate_label.setStyleSheet("font-size: 10px; margin-left: 15px;")
-                    estimate_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+                    estimate_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
                     estimate_label.setToolTip("Estimated based on audio buffer size - may be incorrect")
                     row_layout.addWidget(estimate_label)
                 
@@ -1661,7 +1661,7 @@ class MainWindow(QMainWindow):
         import logging
         logger = logging.getLogger(__name__)
         
-        from PyQt5.QtWidgets import QMenu
+        from PyQt6.QtWidgets import QMenu
         
         excluded_games = self.config.get_excluded_games()
         is_excluded = source['name'] in excluded_games
@@ -1825,10 +1825,10 @@ class MainWindow(QMainWindow):
         reply = QMessageBox.question(
             self, "Confirm",
             "Disconnect all audio sources from Steam recording?\nThis will restore default sink-based routing.",
-            QMessageBox.Yes | QMessageBox.No
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
 
-        if reply == QMessageBox.Yes:
+        if reply == QMessageBox.StandardButton.Yes:
             try:
                 success, message = self.pipewire.disconnect_all_from_steam()
                 
